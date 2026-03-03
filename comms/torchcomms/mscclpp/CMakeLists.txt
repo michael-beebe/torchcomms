@@ -21,12 +21,14 @@ else()
     list(APPEND TORCHCOMMS_MSCCLPP_SOURCES ${TORCHCOMMS_CUDA_API_SOURCE})
 endif()
 
-# --- Locate MSCCL++ library ---
-# Priority: MSCCLPP_HOME env var > system find_package
+# --- Locate MSCCL++ library (optional for stub builds) ---
+# Priority: MSCCLPP_HOME env var > system find_package > stub-only (no mscclpp)
+set(MSCCLPP_FOUND FALSE)
 if(DEFINED ENV{MSCCLPP_HOME})
     set(MSCCLPP_HOME "$ENV{MSCCLPP_HOME}")
     set(MSCCLPP_INCLUDE "${MSCCLPP_HOME}/include")
     set(MSCCLPP_LIB_DIR "${MSCCLPP_HOME}/lib")
+    set(MSCCLPP_FOUND TRUE)
     message(STATUS "Using MSCCL++ from MSCCLPP_HOME: ${MSCCLPP_HOME}")
 else()
     # Try find_package; downstream users can set CMAKE_PREFIX_PATH
@@ -35,9 +37,11 @@ else()
         message(STATUS "Found MSCCL++ via find_package")
         get_target_property(MSCCLPP_INCLUDE mscclpp::mscclpp INTERFACE_INCLUDE_DIRECTORIES)
         set(MSCCLPP_LIB_DIR "")  # linked via target
+        set(MSCCLPP_FOUND TRUE)
     else()
-        message(FATAL_ERROR
-          "MSCCL++ not found. Set MSCCLPP_HOME or install mscclpp and add to CMAKE_PREFIX_PATH.\n"
+        message(STATUS
+          "MSCCL++ not found — building stub-only (no collectives).\n"
+          "  To enable full MSCCL++ support, set MSCCLPP_HOME or install mscclpp:\n"
           "  git clone https://github.com/microsoft/mscclpp && cd mscclpp\n"
           "  mkdir build && cd build && cmake .. -DCMAKE_INSTALL_PREFIX=<prefix>\n"
           "  make -j && make install\n"
@@ -58,14 +62,17 @@ set_target_properties(torchcomms_comms_mscclpp PROPERTIES
 )
 target_include_directories(torchcomms_comms_mscclpp PRIVATE
     ${ROOT}
-    ${MSCCLPP_INCLUDE}
     ${FMT_INCLUDE}
     ${CONDA_INCLUDE}
     ${Python3_INCLUDE_DIRS}
 )
+if(MSCCLPP_FOUND)
+    target_include_directories(torchcomms_comms_mscclpp PRIVATE ${MSCCLPP_INCLUDE})
+    target_compile_definitions(torchcomms_comms_mscclpp PRIVATE HAS_MSCCLPP)
+endif()
 target_compile_features(torchcomms_comms_mscclpp PRIVATE cxx_std_20)
 
-# Propagate USE_ROCM to source code so GpuApi.hpp picks the right branch
+# Propagate USE_ROCM to source code so GpuTypes.hpp picks the right branch
 if(IS_ROCM)
     target_compile_definitions(torchcomms_comms_mscclpp PRIVATE USE_ROCM)
 endif()
@@ -79,12 +86,14 @@ target_link_libraries(torchcomms_comms_mscclpp PRIVATE
     torchcomms
 )
 
-# Link MSCCL++ — either via target or explicit path
-if(mscclpp_FOUND)
-    target_link_libraries(torchcomms_comms_mscclpp PRIVATE mscclpp::mscclpp)
-else()
-    target_link_directories(torchcomms_comms_mscclpp PRIVATE ${MSCCLPP_LIB_DIR})
-    target_link_libraries(torchcomms_comms_mscclpp PRIVATE mscclpp)
+# Link MSCCL++ — either via target or explicit path (only if found)
+if(MSCCLPP_FOUND)
+    if(mscclpp_FOUND)
+        target_link_libraries(torchcomms_comms_mscclpp PRIVATE mscclpp::mscclpp)
+    else()
+        target_link_directories(torchcomms_comms_mscclpp PRIVATE ${MSCCLPP_LIB_DIR})
+        target_link_libraries(torchcomms_comms_mscclpp PRIVATE mscclpp)
+    endif()
 endif()
 
 if(USE_SYSTEM_LIBS)
