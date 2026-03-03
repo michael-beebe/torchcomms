@@ -26,10 +26,23 @@ endif()
 set(MSCCLPP_FOUND FALSE)
 if(DEFINED ENV{MSCCLPP_HOME})
     set(MSCCLPP_HOME "$ENV{MSCCLPP_HOME}")
-    set(MSCCLPP_INCLUDE "${MSCCLPP_HOME}/include")
     set(MSCCLPP_LIB_DIR "${MSCCLPP_HOME}/lib")
+    # Locate headers: prefer ${MSCCLPP_HOME}/include, but fall back to
+    # ${MSCCLPP_HOME}/../include for in-tree builds where the user points
+    # MSCCLPP_HOME at the build directory (libs in build/lib, headers in
+    # the source tree's include/).
+    if(EXISTS "${MSCCLPP_HOME}/include/mscclpp/core.hpp")
+        set(MSCCLPP_INCLUDE "${MSCCLPP_HOME}/include")
+    elseif(EXISTS "${MSCCLPP_HOME}/../include/mscclpp/core.hpp")
+        set(MSCCLPP_INCLUDE "${MSCCLPP_HOME}/../include")
+    else()
+        message(FATAL_ERROR "MSCCL++ headers not found under ${MSCCLPP_HOME}/include or ${MSCCLPP_HOME}/../include")
+    endif()
+    # Generated headers (e.g. version.hpp) live in ${MSCCLPP_HOME}/include.
+    set(MSCCLPP_BUILD_INCLUDE "${MSCCLPP_HOME}/include")
     set(MSCCLPP_FOUND TRUE)
     message(STATUS "Using MSCCL++ from MSCCLPP_HOME: ${MSCCLPP_HOME}")
+    message(STATUS "Using MSCCL++ headers from: ${MSCCLPP_INCLUDE}")
 else()
     # Try find_package; downstream users can set CMAKE_PREFIX_PATH
     find_package(mscclpp QUIET)
@@ -68,6 +81,9 @@ target_include_directories(torchcomms_comms_mscclpp PRIVATE
 )
 if(MSCCLPP_FOUND)
     target_include_directories(torchcomms_comms_mscclpp PRIVATE ${MSCCLPP_INCLUDE})
+    if(DEFINED MSCCLPP_BUILD_INCLUDE AND NOT MSCCLPP_BUILD_INCLUDE STREQUAL MSCCLPP_INCLUDE)
+        target_include_directories(torchcomms_comms_mscclpp PRIVATE ${MSCCLPP_BUILD_INCLUDE})
+    endif()
     target_compile_definitions(torchcomms_comms_mscclpp PRIVATE HAS_MSCCLPP)
 endif()
 target_compile_features(torchcomms_comms_mscclpp PRIVATE cxx_std_20)
