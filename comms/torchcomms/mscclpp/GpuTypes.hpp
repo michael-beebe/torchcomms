@@ -12,8 +12,8 @@
 
 #ifdef USE_ROCM
 
-#include <hip/hip_runtime.h>
 #include <comms/torchcomms/rccl/HipApi.hpp>
+#include <hip/hip_runtime.h>
 
 namespace torch::comms::mscclpp_detail {
 
@@ -25,12 +25,12 @@ using gpuError_t = hipError_t;
 inline constexpr gpuError_t gpuSuccess = hipSuccess;
 inline constexpr gpuError_t gpuErrorNotReady = hipErrorNotReady;
 
-}  // namespace torch::comms::mscclpp_detail
+} // namespace torch::comms::mscclpp_detail
 
-#else  // CUDA
+#else // CUDA
 
-#include <cuda_runtime.h>
 #include <comms/torchcomms/device/cuda/CudaApi.hpp>
+#include <cuda_runtime.h>
 
 namespace torch::comms::mscclpp_detail {
 
@@ -42,6 +42,6 @@ using gpuError_t = cudaError_t;
 inline constexpr gpuError_t gpuSuccess = cudaSuccess;
 inline constexpr gpuError_t gpuErrorNotReady = cudaErrorNotReady;
 
-}  // namespace torch::comms::mscclpp_detail
+} // namespace torch::comms::mscclpp_detail
 
-#endif  // USE_ROCM
+#endif // USE_ROCM

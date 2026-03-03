@@ -1,8 +1,8 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-#include <comms/torchcomms/mscclpp/TorchCommMSCCLPP.hpp>
 #include <comms/torchcomms/TorchCommFactory.hpp>
 #include <comms/torchcomms/TorchWork.hpp>
+#include <comms/torchcomms/mscclpp/TorchCommMSCCLPP.hpp>
 
 namespace torch::comms {
 
@@ -82,8 +82,7 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::send(
     int /*dst*/,
     bool /*async_op*/,
     const SendOptions& /*options*/) {
-  throw std::runtime_error(
-      "[TorchCommMSCCLPP] send() not yet implemented.");
+  throw std::runtime_error("[TorchCommMSCCLPP] send() not yet implemented.");
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::recv(
@@ -91,8 +90,7 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::recv(
     int /*src*/,
     bool /*async_op*/,
     const RecvOptions& /*options*/) {
-  throw std::runtime_error(
-      "[TorchCommMSCCLPP] recv() not yet implemented.");
+  throw std::runtime_error("[TorchCommMSCCLPP] recv() not yet implemented.");
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::batch_op_issue(
@@ -127,8 +125,7 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::reduce(
     const ReduceOp& /*op*/,
     bool /*async_op*/,
     const ReduceOptions& /*options*/) {
-  throw std::runtime_error(
-      "[TorchCommMSCCLPP] reduce() not yet implemented.");
+  throw std::runtime_error("[TorchCommMSCCLPP] reduce() not yet implemented.");
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::all_gather(
@@ -220,8 +217,7 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::all_to_all(
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::barrier(
     bool /*async_op*/,
     const BarrierOptions& /*options*/) {
-  throw std::runtime_error(
-      "[TorchCommMSCCLPP] barrier() not yet implemented.");
+  throw std::runtime_error("[TorchCommMSCCLPP] barrier() not yet implemented.");
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::scatter(
@@ -230,8 +226,7 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::scatter(
     int /*root*/,
     bool /*async_op*/,
     const ScatterOptions& /*options*/) {
-  throw std::runtime_error(
-      "[TorchCommMSCCLPP] scatter() not yet implemented.");
+  throw std::runtime_error("[TorchCommMSCCLPP] scatter() not yet implemented.");
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::gather(
@@ -240,8 +235,7 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::gather(
     int /*root*/,
     bool /*async_op*/,
     const GatherOptions& /*options*/) {
-  throw std::runtime_error(
-      "[TorchCommMSCCLPP] gather() not yet implemented.");
+  throw std::runtime_error("[TorchCommMSCCLPP] gather() not yet implemented.");
 }
 
 std::shared_ptr<TorchCommBackend> TorchCommMSCCLPP::split(
@@ -249,8 +243,7 @@ std::shared_ptr<TorchCommBackend> TorchCommMSCCLPP::split(
     const std::string& /*name*/,
     const CommOptions& /*options*/) {
   // TODO: Create sub-communicator via mscclpp bootstrap split
-  throw std::runtime_error(
-      "[TorchCommMSCCLPP] split() not yet implemented.");
+  throw std::runtime_error("[TorchCommMSCCLPP] split() not yet implemented.");
 }
 
 // --- Factory registration ---
