@@ -6,6 +6,11 @@
 
 namespace torch::comms {
 
+mscclpp::UniqueId DefaultMscclppApi::createUniqueId() {
+  std::lock_guard<std::mutex> lock(api_mutex_);
+  return mscclpp::TcpBootstrap::createUniqueId();
+}
+
 std::shared_ptr<mscclpp::TcpBootstrap> DefaultMscclppApi::createTcpBootstrap(
     int rank,
     int size) {
@@ -15,10 +20,10 @@ std::shared_ptr<mscclpp::TcpBootstrap> DefaultMscclppApi::createTcpBootstrap(
 
 void DefaultMscclppApi::bootstrapInitialize(
     mscclpp::TcpBootstrap& bootstrap,
-    const std::string& ip_port_pair,
+    mscclpp::UniqueId unique_id,
     int64_t timeout_sec) {
   std::lock_guard<std::mutex> lock(api_mutex_);
-  bootstrap.initialize(ip_port_pair, timeout_sec);
+  bootstrap.initialize(unique_id, timeout_sec);
 }
 
 std::shared_ptr<mscclpp::Communicator> DefaultMscclppApi::createCommunicator(
@@ -50,7 +55,8 @@ void DefaultMscclppApi::executePlan(
     mscclpp::DataType dataType,
     cudaStream_t stream) {
   std::lock_guard<std::mutex> lock(api_mutex_);
-  executor.execute(rank, sendbuf, recvbuf, bytes, bytes, dataType, plan, stream);
+  executor.execute(
+      rank, sendbuf, recvbuf, bytes, bytes, dataType, plan, stream);
 }
 
 } // namespace torch::comms

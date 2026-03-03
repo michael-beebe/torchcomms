@@ -33,15 +33,19 @@ class MscclppApi {
 
   // --- Bootstrap ---
 
+  /// Generate a new unique ID on rank 0.
+  /// All ranks must initialize their TcpBootstrap with the same UniqueId.
+  virtual mscclpp::UniqueId createUniqueId() = 0;
+
   /// Create a TcpBootstrap for the given rank/size.
   virtual std::shared_ptr<mscclpp::TcpBootstrap> createTcpBootstrap(
       int rank,
       int size) = 0;
 
-  /// Initialize the bootstrap using an "ip:port" or "interface:ip:port" string.
+  /// Initialize the bootstrap using a UniqueId from the store exchange.
   virtual void bootstrapInitialize(
       mscclpp::TcpBootstrap& bootstrap,
-      const std::string& ip_port_pair,
+      mscclpp::UniqueId unique_id,
       int64_t timeout_sec = 30) = 0;
 
   // --- Communicator ---
@@ -85,12 +89,14 @@ class DefaultMscclppApi : public MscclppApi {
  public:
   DefaultMscclppApi() = default;
 
+  mscclpp::UniqueId createUniqueId() override;
+
   std::shared_ptr<mscclpp::TcpBootstrap> createTcpBootstrap(int rank, int size)
       override;
 
   void bootstrapInitialize(
       mscclpp::TcpBootstrap& bootstrap,
-      const std::string& ip_port_pair,
+      mscclpp::UniqueId unique_id,
       int64_t timeout_sec = 30) override;
 
   std::shared_ptr<mscclpp::Communicator> createCommunicator(
