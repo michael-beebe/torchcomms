@@ -10,8 +10,10 @@ namespace torch::comms {
 
 // --- MscclppGpuEventPool ---
 
-MscclppGpuEventPool::MscclppGpuEventPool(CudaApi* cuda_api, size_t max_size)
-    : cuda_api_(cuda_api), max_size_(max_size) {}
+MscclppGpuEventPool::MscclppGpuEventPool(
+    std::shared_ptr<CudaApi> cuda_api,
+    size_t max_size)
+    : cuda_api_(std::move(cuda_api)), max_size_(max_size) {}
 
 MscclppGpuEventPool::~MscclppGpuEventPool() {
   // Acquire the lock so we don't destroy events while another thread holds one.
@@ -56,25 +58,25 @@ TorchWorkMSCCLPP::TorchWorkMSCCLPP(
     cudaStream_t op_stream,
     int device_index,
     std::chrono::milliseconds timeout_ms,
-    MscclppGpuEventPool& event_pool,
-    CudaApi* cuda_api)
+    std::shared_ptr<MscclppGpuEventPool> event_pool,
+    std::shared_ptr<CudaApi> cuda_api)
     : op_stream_(op_stream),
       device_index_(device_index),
       timeout_ms_(timeout_ms),
-      event_pool_(event_pool),
-      cuda_api_(cuda_api) {
+      event_pool_(std::move(event_pool)),
+      cuda_api_(std::move(cuda_api)) {
   // Acquire two events from the pool: one to mark when the collective
   // starts executing on the GPU, one to mark when it finishes.
   // Pool events are reused across operations to avoid allocation overhead.
-  start_event_ = event_pool_.acquire();
-  end_event_ = event_pool_.acquire();
+  start_event_ = event_pool_->acquire();
+  end_event_ = event_pool_->acquire();
 }
 
 TorchWorkMSCCLPP::~TorchWorkMSCCLPP() {
   // Return events to the pool instead of destroying them.
   // Matches TorchCommNCCL's returnEvent() pattern.
-  event_pool_.release(start_event_);
-  event_pool_.release(end_event_);
+  event_pool_->release(start_event_);
+  event_pool_->release(end_event_);
 }
 
 // Called by TorchCommMSCCLPP *before* launching the MSCCL++ executor call.

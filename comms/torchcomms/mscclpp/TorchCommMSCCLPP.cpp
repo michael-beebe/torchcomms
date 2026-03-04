@@ -1,13 +1,37 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
+// Include glog before ATen so glog's LOG macro takes precedence over the
+// stub redefinition in c10/util/logging_is_not_google_glog.h.
+#include <glog/logging.h>
+
 #include <comms/torchcomms/TorchCommFactory.hpp>
 #include <comms/torchcomms/TorchWork.hpp>
 #include <comms/torchcomms/mscclpp/TorchCommMSCCLPP.hpp>
 
 #ifdef HAS_MSCCLPP
+#include <ATen/cuda/CUDAContext.h>
+#include <comms/torchcomms/mscclpp/DtypeMap.hpp>
+#include <comms/torchcomms/mscclpp/MscclppUtils.hpp>
 #include <comms/torchcomms/mscclpp/TorchCommMSCCLPPBootstrap.hpp>
 #include <filesystem>
-#endif
+
+namespace torch::comms::mscclpp_utils {
+// Select the GPU stream for an operation.
+// Async ops use the dedicated internal stream so they return immediately;
+// synchronous ops use the caller's current torch CUDA stream so the
+// executor launch is inline with any preceding work on that stream.
+inline mscclpp_detail::gpuStream_t getOperationStream(
+    bool async_op,
+    mscclpp_detail::gpuStream_t internal_stream,
+    int device_index) {
+  if (async_op) {
+    return internal_stream;
+  }
+  return at::cuda::getCurrentCUDAStream(device_index).stream();
+}
+} // namespace torch::comms::mscclpp_utils
+
+#endif // HAS_MSCCLPP
 
 namespace torch::comms {
 
@@ -76,7 +100,7 @@ void TorchCommMSCCLPP::init(
 
   // 7. Create GPU event pool (backed by the same gpu_api_)
   event_pool_ =
-      std::make_unique<MscclppGpuEventPool>(gpu_api_.get(), /*max_size=*/256);
+      std::make_shared<MscclppGpuEventPool>(gpu_api_, /*max_size=*/256);
 
   // 8. Load execution plans
   //    Priority: "torchcomm::mscclpp::plan_dir" hint > MSCCLPP_PLAN_DIR env
@@ -114,6 +138,14 @@ void TorchCommMSCCLPP::finalize() {
   // Drain pending work before tearing down
   if (internal_stream_) {
     gpu_api_->streamSynchronize(internal_stream_);
+  }
+
+  // Synchronize all ranks before tearing down connections.
+  // Bootstrap::barrier() is a collective — all ranks must call finalize()
+  // before any rank destroys its Executor or Communicator, otherwise
+  // connection teardown on one rank races with an active peer.
+  if (comm_) {
+    comm_->bootstrap()->barrier();
   }
 
   // Destroy executor before communicator (MSCCL++ requirement)
@@ -260,12 +292,42 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::broadcast(
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::all_reduce(
-    at::Tensor& /*tensor*/,
-    const ReduceOp& /*op*/,
-    bool /*async_op*/,
-    const AllReduceOptions& /*options*/) {
+    at::Tensor& tensor,
+    const ReduceOp& op,
+    bool async_op,
+    const AllReduceOptions& options) {
+  checkInitialized();
+
+#ifdef HAS_MSCCLPP
+  mscclpp_utils::validateReduceOp(op, "all_reduce");
+
+  tensor = mscclpp_utils::ensureContiguous(tensor);
+
+  const auto& plan = selectPlan("allreduce", tensor.nbytes(), options.hints);
+
+  auto stream = mscclpp_utils::getOperationStream(
+      async_op, internal_stream_, device_.index());
+
+  auto work = c10::make_intrusive<TorchWorkMSCCLPP>(
+      stream, device_.index(), options.timeout, event_pool_, gpu_api_);
+  work->recordStart();
+
+  mscclpp_api_->executePlan(
+      *executor_,
+      plan,
+      rank_,
+      tensor.data_ptr(),
+      tensor.data_ptr(), // in-place: send and recv buffers are the same
+      tensor.nbytes(),
+      torchDtypeToMscclpp(tensor.scalar_type()),
+      stream);
+
+  work->recordEnd();
+  return work;
+#else
   throw std::runtime_error(
-      "[TorchCommMSCCLPP] all_reduce() not yet implemented.");
+      "[TorchCommMSCCLPP] all_reduce() requires MSCCL++ (built without HAS_MSCCLPP).");
+#endif
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::reduce(

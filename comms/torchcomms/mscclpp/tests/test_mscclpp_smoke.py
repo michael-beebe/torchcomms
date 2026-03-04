@@ -161,5 +161,40 @@ class TestMscclppPlanLoading(unittest.TestCase):
             comm.finalize()
 
 
+@unittest.skipUnless(
+    torch.cuda.is_available() and torch.cuda.device_count() > 0,
+    "No CUDA device available",
+)
+class TestMscclppAllReduceValidation(unittest.TestCase):
+    """Validates all_reduce() error-handling paths that don't require a plan.
+
+    These tests run on a single GPU without a plan directory.  They verify:
+    - Non-SUM ops are rejected immediately (before plan lookup).
+    - SUM op with no plans loaded produces a helpful 'no plan found' error.
+    Both paths are exercised without any real distributed communication.
+    """
+
+    def setUp(self) -> None:
+        self.comm = torchcomms.new_comm(
+            "mscclpp", torch.device("cuda:0"), name="allreduce_val_test"
+        )
+        self.tensor = torch.ones(64, device="cuda:0")
+
+    def tearDown(self) -> None:
+        self.comm.finalize()
+
+    def test_non_sum_allreduce_raises(self) -> None:
+        """PRODUCT is rejected before any plan lookup — error names the op constraint."""
+        with self.assertRaises(RuntimeError) as ctx:
+            self.comm.all_reduce(self.tensor, torchcomms.ReduceOp.PRODUCT, False)
+        self.assertIn("SUM", str(ctx.exception))
+
+    def test_sum_allreduce_no_plans_raises_with_helpful_message(self) -> None:
+        """SUM all_reduce with no plans loaded raises and names the collective."""
+        with self.assertRaises(RuntimeError) as ctx:
+            self.comm.all_reduce(self.tensor, torchcomms.ReduceOp.SUM, False)
+        self.assertIn("allreduce", str(ctx.exception).lower())
+
+
 if __name__ == "__main__":
     unittest.main()

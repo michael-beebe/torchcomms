@@ -183,7 +183,7 @@ class TorchCommMSCCLPP : public TorchCommBackend,
   mscclpp_detail::gpuStream_t internal_stream_ = nullptr;
 
   // GPU event pool shared across all work handles from this communicator.
-  std::unique_ptr<MscclppGpuEventPool> event_pool_;
+  std::shared_ptr<MscclppGpuEventPool> event_pool_;
 
   // Algorithm plan cache: plan_name → loaded ExecutionPlan.
   std::unordered_map<std::string, std::unique_ptr<mscclpp::ExecutionPlan>>

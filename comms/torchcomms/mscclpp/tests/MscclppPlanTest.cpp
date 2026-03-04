@@ -57,8 +57,7 @@ class MscclppPlanTest : public ::testing::Test {
   // TearDown.
   std::string makeTempDir(const std::string& label) {
     std::string dir = "/tmp/mscclpp_plan_test_" + label + "_" +
-        std::to_string(
-            ::testing::UnitTest::GetInstance()->random_seed());
+        std::to_string(::testing::UnitTest::GetInstance()->random_seed());
     std::filesystem::create_directories(dir);
     temp_dirs_.push_back(dir);
     return dir;
@@ -109,8 +108,7 @@ TEST_F(MscclppPlanTest, SelectPlanExplicitHintNotFoundThrows) {
   TorchCommMSCCLPP comm;
   std::unordered_map<std::string, std::string> hints = {
       {"torchcomm::mscclpp::plan", "custom_plan_v2"}};
-  EXPECT_THROW(
-      selectPlan(comm, "allreduce", 1024, hints), std::runtime_error);
+  EXPECT_THROW(selectPlan(comm, "allreduce", 1024, hints), std::runtime_error);
 }
 
 TEST_F(MscclppPlanTest, SelectPlanExplicitHintErrorMentionsPlanName) {

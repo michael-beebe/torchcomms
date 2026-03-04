@@ -6,6 +6,7 @@
 
 #include <fmt/core.h>
 
+#include <comms/torchcomms/StoreManager.hpp>
 #include <comms/torchcomms/TorchCommLogging.hpp>
 #include <comms/torchcomms/TorchCommUtils.hpp>
 
@@ -31,6 +32,18 @@ TorchCommMSCCLPPBootstrap::~TorchCommMSCCLPPBootstrap() noexcept = default;
 
 mscclpp::UniqueId TorchCommMSCCLPPBootstrap::exchangeUniqueId(
     const std::string& name) {
+  // Single-process: no coordination needed — generate the unique ID locally
+  // and return immediately without touching the store.
+  if (size_ == 1) {
+    return api_->createUniqueId();
+  }
+
+  // Multi-process without a caller-supplied store: fall back to StoreManager
+  // (same pattern as TorchCommNCCLBootstrap::exchangeUniqueIdTCPStore).
+  if (!store_) {
+    store_ = StoreManager::get().getStore("mscclpp", name, timeout_);
+  }
+
   // Key format mirrors TorchCommNCCLBootstrap::getNCCLStoreKey().
   std::string key = fmt::format("mscclpp_uniqueid_{}{}", name, counter_++);
 
@@ -65,12 +78,17 @@ TorchCommMSCCLPPBootstrap::createCommunicator(
   // 1. Exchange UniqueId via store (rank 0 generates, all ranks receive)
   mscclpp::UniqueId unique_id = exchangeUniqueId(name);
 
-  // 2. Create TcpBootstrap and initialize all ranks with the same UniqueId
+  // 2. Create TcpBootstrap and initialize all ranks with the same UniqueId.
+  //    For size==1 we skip initialize() — there are no peers to rendezvous
+  //    with, and the TcpBootstrap constructor produces an unconnected object
+  //    that is still usable as a handle for Communicator creation.
   auto bootstrap = api_->createTcpBootstrap(rank_, size_);
-  int64_t timeout_sec = std::max(
-      int64_t{1},
-      std::chrono::duration_cast<std::chrono::seconds>(timeout_).count());
-  api_->bootstrapInitialize(*bootstrap, unique_id, timeout_sec);
+  if (size_ > 1) {
+    int64_t timeout_sec = std::max(
+        int64_t{1},
+        std::chrono::duration_cast<std::chrono::seconds>(timeout_).count());
+    api_->bootstrapInitialize(*bootstrap, unique_id, timeout_sec);
+  }
 
   // 3. Create communicator
   auto comm = api_->createCommunicator(bootstrap);

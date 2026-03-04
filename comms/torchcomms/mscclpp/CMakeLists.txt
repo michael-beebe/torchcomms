@@ -213,4 +213,48 @@ if(BUILD_TESTS AND MSCCLPP_FOUND)
         target_link_libraries(MscclppPlanTest PRIVATE "-l:libfmt.a")
     endif()
     add_test(NAME MscclppPlanTest COMMAND MscclppPlanTest)
+
+    # MscclppCollectiveTest — collective validation unit tests.
+    # Tests validateReduceOp() from MscclppUtils.hpp and the checkInitialized()
+    # guard on all_reduce().  No real communicator or CUDA device required for
+    # any of these tests.
+    add_executable(MscclppCollectiveTest
+        ${ROOT}/comms/torchcomms/mscclpp/tests/MscclppCollectiveTest.cpp
+        ${ROOT}/comms/torchcomms/mscclpp/TorchCommMSCCLPP.cpp
+        ${ROOT}/comms/torchcomms/mscclpp/TorchCommMSCCLPPBootstrap.cpp
+        ${ROOT}/comms/torchcomms/mscclpp/MscclppApi.cpp
+        ${ROOT}/comms/torchcomms/mscclpp/TorchWorkMSCCLPP.cpp
+        ${ROOT}/comms/torchcomms/device/cuda/CudaApi.cpp
+    )
+    target_include_directories(MscclppCollectiveTest PRIVATE
+        ${ROOT}
+        ${MSCCLPP_INCLUDE}
+        ${CONDA_INCLUDE}
+        ${CUDA_INCLUDE_DIRS}
+    )
+    if(DEFINED MSCCLPP_BUILD_INCLUDE AND NOT MSCCLPP_BUILD_INCLUDE STREQUAL MSCCLPP_INCLUDE)
+        target_include_directories(MscclppCollectiveTest PRIVATE ${MSCCLPP_BUILD_INCLUDE})
+    endif()
+    target_compile_features(MscclppCollectiveTest PRIVATE cxx_std_20)
+    target_compile_definitions(MscclppCollectiveTest PRIVATE HAS_MSCCLPP)
+    target_link_directories(MscclppCollectiveTest PRIVATE ${CONDA_LIB})
+    if(MSCCLPP_FOUND AND NOT mscclpp_FOUND)
+        target_link_directories(MscclppCollectiveTest PRIVATE ${MSCCLPP_LIB_DIR})
+        target_link_libraries(MscclppCollectiveTest PRIVATE mscclpp)
+    else()
+        target_link_libraries(MscclppCollectiveTest PRIVATE mscclpp::mscclpp)
+    endif()
+    target_link_libraries(MscclppCollectiveTest PRIVATE
+        torchcomms
+        ${TORCH_LIBRARIES}
+        CUDA::cudart
+        GTest::gtest
+        "-lglog"
+    )
+    if(USE_SYSTEM_LIBS)
+        target_link_libraries(MscclppCollectiveTest PRIVATE "-lfmt")
+    else()
+        target_link_libraries(MscclppCollectiveTest PRIVATE "-l:libfmt.a")
+    endif()
+    add_test(NAME MscclppCollectiveTest COMMAND MscclppCollectiveTest)
 endif()

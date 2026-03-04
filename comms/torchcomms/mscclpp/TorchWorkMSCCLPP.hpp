@@ -33,7 +33,9 @@ class TorchCommMSCCLPP;
  */
 class MscclppGpuEventPool {
  public:
-  explicit MscclppGpuEventPool(CudaApi* cuda_api, size_t max_size = 256);
+  explicit MscclppGpuEventPool(
+      std::shared_ptr<CudaApi> cuda_api,
+      size_t max_size = 256);
   ~MscclppGpuEventPool();
 
   // Non-copyable, non-movable
@@ -49,7 +51,9 @@ class MscclppGpuEventPool {
   void release(cudaEvent_t event);
 
  private:
-  CudaApi* cuda_api_; // not owned
+  // Shared ownership: keeps the GpuApi alive as long as the pool exists
+  // (prevents dangling pointer after TorchCommMSCCLPP is destroyed).
+  std::shared_ptr<CudaApi> cuda_api_;
   std::vector<cudaEvent_t> available_;
   std::mutex mutex_;
   size_t max_size_;
@@ -75,8 +79,8 @@ class TorchWorkMSCCLPP : public TorchWork {
       cudaStream_t op_stream,
       int device_index,
       std::chrono::milliseconds timeout_ms,
-      MscclppGpuEventPool& event_pool,
-      CudaApi* cuda_api);
+      std::shared_ptr<MscclppGpuEventPool> event_pool,
+      std::shared_ptr<CudaApi> cuda_api);
   ~TorchWorkMSCCLPP() override;
 
   // Non-copyable, non-movable
@@ -108,8 +112,11 @@ class TorchWorkMSCCLPP : public TorchWork {
   cudaStream_t op_stream_; // not owned
   int device_index_;
   std::chrono::milliseconds timeout_ms_;
-  MscclppGpuEventPool& event_pool_; // not owned — owned by TorchCommMSCCLPP
-  CudaApi* cuda_api_; // not owned — lifetime tied to TorchCommMSCCLPP
+  // Shared ownership: keeps the GpuApi alive as long as the pool exists
+  // (prevents dangling pointer after TorchCommMSCCLPP is destroyed).
+  std::shared_ptr<MscclppGpuEventPool> event_pool_;
+  // Shared ownership: keeps the api alive while work is using it for events.
+  std::shared_ptr<CudaApi> cuda_api_;
   std::optional<std::chrono::steady_clock::time_point> start_completed_time_;
 };
 
