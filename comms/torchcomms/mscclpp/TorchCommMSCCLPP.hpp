@@ -6,10 +6,21 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include <ATen/ATen.h>
 #include <comms/torchcomms/TorchCommBackend.hpp>
+
+#ifdef HAS_MSCCLPP
+#include <comms/torchcomms/mscclpp/GpuTypes.hpp>
+#include <comms/torchcomms/mscclpp/MscclppApi.hpp>
+#include <comms/torchcomms/mscclpp/TorchWorkMSCCLPP.hpp>
+#include <mscclpp/core.hpp>
+#include <mscclpp/executor.hpp>
+// Forward-declare the test fixture so the friend declaration below resolves.
+class MscclppPlanTest;
+#endif
 
 namespace torch::comms {
 
@@ -157,10 +168,41 @@ class TorchCommMSCCLPP : public TorchCommBackend,
   int rank_ = 0;
   int size_ = 1;
 
-  // TODO: Add std::shared_ptr<MscclppApi> mscclpp_api_
-  // TODO: Add MscclppGpuEventPool event_pool_
-  // TODO: Add mscclpp::Communicator, Executor, internal_stream_,
-  //   plan cache, and gpu_api_ (std::shared_ptr<mscclpp_detail::GpuApi>)
+#ifdef HAS_MSCCLPP
+  // GPU API (device/stream management) — injected for testing, defaults to
+  // DefaultGpuApi in init().
+  std::shared_ptr<mscclpp_detail::GpuApi> gpu_api_;
+
+  // MSCCL++ API (communicator/executor) — injected for testing.
+  std::shared_ptr<MscclppApi> mscclpp_api_;
+
+  std::shared_ptr<mscclpp::Communicator> comm_;
+  std::unique_ptr<mscclpp::Executor> executor_;
+
+  // Dedicated async stream for executor launches.
+  mscclpp_detail::gpuStream_t internal_stream_ = nullptr;
+
+  // GPU event pool shared across all work handles from this communicator.
+  std::unique_ptr<MscclppGpuEventPool> event_pool_;
+
+  // Algorithm plan cache: plan_name → loaded ExecutionPlan.
+  std::unordered_map<std::string, std::unique_ptr<mscclpp::ExecutionPlan>>
+      plans_;
+
+  // Load all *.json plans from plan_dir into plans_.
+  void loadPlans(const std::string& plan_dir);
+
+  // Select the best plan for a collective + message size.
+  // Checks the "torchcomm::mscclpp::plan" hint first, then applies the
+  // naming convention: <collective>_sm_packet (≤1MB) / <collective>_sm (>1MB).
+  const mscclpp::ExecutionPlan& selectPlan(
+      const std::string& collective,
+      size_t message_bytes,
+      const std::unordered_map<std::string, std::string>& hints) const;
+
+  // Grant test fixture access to private plan methods and state.
+  friend class ::MscclppPlanTest;
+#endif // HAS_MSCCLPP
 };
 
 } // namespace torch::comms

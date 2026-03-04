@@ -38,9 +38,7 @@ class TestMscclppModuleImport(unittest.TestCase):
 
     def test_entry_point_registered(self) -> None:
         eps = list(
-            importlib.metadata.entry_points(
-                group="torchcomms.backends", name="mscclpp"
-            )
+            importlib.metadata.entry_points(group="torchcomms.backends", name="mscclpp")
         )
         self.assertGreater(
             len(eps),
@@ -58,7 +56,7 @@ class TestMscclppBackendLifecycle(unittest.TestCase):
     """Factory, metadata, and teardown — uses the stub init(), no real communicator."""
 
     def _make_comm(self, name: str = "smoke_test_comm") -> torchcomms.TorchComm:
-        return torchcomms.new_comm("mscclpp", torch.device("cuda:0"), name)
+        return torchcomms.new_comm("mscclpp", torch.device("cuda:0"), name=name)
 
     # ------------------------------------------------------------------
 
@@ -101,14 +99,66 @@ class TestMscclppBackendLifecycle(unittest.TestCase):
 
     def test_two_comms_are_independent(self) -> None:
         """Two separate comms for the same device must coexist without interference."""
-        comm_a = torchcomms.new_comm("mscclpp", torch.device("cuda:0"), "comm_a")
-        comm_b = torchcomms.new_comm("mscclpp", torch.device("cuda:0"), "comm_b")
+        comm_a = torchcomms.new_comm("mscclpp", torch.device("cuda:0"), name="comm_a")
+        comm_b = torchcomms.new_comm("mscclpp", torch.device("cuda:0"), name="comm_b")
         try:
             self.assertEqual(comm_a.get_name(), "comm_a")
             self.assertEqual(comm_b.get_name(), "comm_b")
         finally:
             comm_a.finalize()
             comm_b.finalize()
+
+
+@unittest.skipUnless(
+    torch.cuda.is_available() and torch.cuda.device_count() > 0,
+    "No CUDA device available",
+)
+class TestMscclppPlanLoading(unittest.TestCase):
+    """Tests that loadPlans() handles edge-case plan directories gracefully.
+
+    These tests exercise the MSCCLPP_PLAN_DIR env-var path of init() without
+    real plan JSON files — verifying that bad or empty directories produce a
+    warning (not a crash).
+    """
+
+    def _make_comm_with_plan_dir(self, plan_dir: str) -> torchcomms.TorchComm:
+        """Create a comm with MSCCLPP_PLAN_DIR temporarily set to plan_dir."""
+        orig = os.environ.get("MSCCLPP_PLAN_DIR")
+        try:
+            os.environ["MSCCLPP_PLAN_DIR"] = plan_dir
+            return torchcomms.new_comm(
+                "mscclpp", torch.device("cuda:0"), name="plan_dir_test"
+            )
+        finally:
+            if orig is None:
+                os.environ.pop("MSCCLPP_PLAN_DIR", None)
+            else:
+                os.environ["MSCCLPP_PLAN_DIR"] = orig
+
+    def test_nonexistent_plan_dir_does_not_raise(self) -> None:
+        """A non-existent MSCCLPP_PLAN_DIR should log a warning, not crash."""
+        comm = self._make_comm_with_plan_dir("/tmp/no_such_mscclpp_plan_dir_xyz_12345")
+        comm.finalize()
+
+    def test_empty_plan_dir_does_not_raise(self) -> None:
+        """An empty MSCCLPP_PLAN_DIR directory should not crash init()."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            comm = self._make_comm_with_plan_dir(tmpdir)
+            comm.finalize()
+
+    def test_plan_dir_with_non_json_files_does_not_raise(self) -> None:
+        """Plan dir containing only non-.json files: init() succeeds, 0 plans."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Write dummy non-plan files — loadPlans() must skip these.
+            for name in ("README.md", "manifest.txt"):
+                with open(os.path.join(tmpdir, name), "w") as f:
+                    f.write("not a plan")
+            comm = self._make_comm_with_plan_dir(tmpdir)
+            comm.finalize()
 
 
 if __name__ == "__main__":

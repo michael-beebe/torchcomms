@@ -1,0 +1,6 @@
+[
+  {"collective": "allreduce", "max_bytes": 1048576, "plan": "allreduce_sm_packet.json"},
+  {"collective": "allreduce", "min_bytes": 1048577, "plan": "allreduce_sm.json"},
+  {"collective": "allgather", "plan": "allgather_sm.json"},
+  {"collective": "reduce_scatter", "plan": "reduce_scatter_sm.json"}
+]

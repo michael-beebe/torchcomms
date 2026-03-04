@@ -170,4 +170,47 @@ if(BUILD_TESTS AND MSCCLPP_FOUND)
         "-lglog"
     )
     add_test(NAME MscclppEventPoolTest COMMAND MscclppEventPoolTest)
+
+    # MscclppPlanTest — plan selection and loading unit tests.
+    # Exercises selectPlan() / loadPlans() via a friend fixture without needing
+    # a real MSCCL++ communicator or CUDA device.
+    add_executable(MscclppPlanTest
+        ${ROOT}/comms/torchcomms/mscclpp/tests/MscclppPlanTest.cpp
+        ${ROOT}/comms/torchcomms/mscclpp/TorchCommMSCCLPP.cpp
+        ${ROOT}/comms/torchcomms/mscclpp/TorchCommMSCCLPPBootstrap.cpp
+        ${ROOT}/comms/torchcomms/mscclpp/MscclppApi.cpp
+        ${ROOT}/comms/torchcomms/mscclpp/TorchWorkMSCCLPP.cpp
+        ${ROOT}/comms/torchcomms/device/cuda/CudaApi.cpp
+    )
+    target_include_directories(MscclppPlanTest PRIVATE
+        ${ROOT}
+        ${MSCCLPP_INCLUDE}
+        ${CONDA_INCLUDE}
+        ${CUDA_INCLUDE_DIRS}
+    )
+    if(DEFINED MSCCLPP_BUILD_INCLUDE AND NOT MSCCLPP_BUILD_INCLUDE STREQUAL MSCCLPP_INCLUDE)
+        target_include_directories(MscclppPlanTest PRIVATE ${MSCCLPP_BUILD_INCLUDE})
+    endif()
+    target_compile_features(MscclppPlanTest PRIVATE cxx_std_20)
+    target_compile_definitions(MscclppPlanTest PRIVATE HAS_MSCCLPP)
+    target_link_directories(MscclppPlanTest PRIVATE ${CONDA_LIB})
+    if(MSCCLPP_FOUND AND NOT mscclpp_FOUND)
+        target_link_directories(MscclppPlanTest PRIVATE ${MSCCLPP_LIB_DIR})
+        target_link_libraries(MscclppPlanTest PRIVATE mscclpp)
+    else()
+        target_link_libraries(MscclppPlanTest PRIVATE mscclpp::mscclpp)
+    endif()
+    target_link_libraries(MscclppPlanTest PRIVATE
+        torchcomms
+        ${TORCH_LIBRARIES}
+        CUDA::cudart
+        GTest::gtest
+        "-lglog"
+    )
+    if(USE_SYSTEM_LIBS)
+        target_link_libraries(MscclppPlanTest PRIVATE "-lfmt")
+    else()
+        target_link_libraries(MscclppPlanTest PRIVATE "-l:libfmt.a")
+    endif()
+    add_test(NAME MscclppPlanTest COMMAND MscclppPlanTest)
 endif()

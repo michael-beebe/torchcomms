@@ -4,6 +4,11 @@
 #include <comms/torchcomms/TorchWork.hpp>
 #include <comms/torchcomms/mscclpp/TorchCommMSCCLPP.hpp>
 
+#ifdef HAS_MSCCLPP
+#include <comms/torchcomms/mscclpp/TorchCommMSCCLPPBootstrap.hpp>
+#include <filesystem>
+#endif
+
 namespace torch::comms {
 
 TorchCommMSCCLPP::TorchCommMSCCLPP() = default;
@@ -25,28 +30,172 @@ void TorchCommMSCCLPP::init(
     at::Device device,
     const std::string& name,
     const CommOptions& options) {
-  // TODO: Replace stub with real MSCCL++ initialization:
-  //   - Create MscclppApi (or use injected one)
-  //   - Bootstrap via Store adapter to discover rank/size
-  //   - Create mscclpp::Communicator
-  //   - Set GPU device via gpu_api_->setDevice()
-  //   - Create internal GPU stream (high-priority if requested)
-  //   - Create mscclpp::Executor
-  //   - Load execution plans from plan directory
+  if (initialized_) {
+    throw std::runtime_error(
+        "[TorchCommMSCCLPP] Already initialized. Call finalize() first.");
+  }
+
   device_ = device;
   name_ = name;
   options_ = options;
+
+#ifdef HAS_MSCCLPP
+  // 1. GPU API (injectable; default to real CUDA/HIP calls)
+  if (!gpu_api_) {
+    gpu_api_ = std::make_shared<mscclpp_detail::DefaultGpuApi>();
+  }
+
+  // 2. MSCCL++ API (injectable for tests)
+  if (!mscclpp_api_) {
+    mscclpp_api_ = std::make_shared<DefaultMscclppApi>();
+  }
+
+  // 3. Bootstrap: discovers rank/size and creates the Communicator
+  auto bootstrap = std::make_unique<TorchCommMSCCLPPBootstrap>(
+      options.store, device, mscclpp_api_, options.timeout);
+  rank_ = bootstrap->getRank();
+  size_ = bootstrap->getSize();
+  comm_ = bootstrap->createCommunicator(name, options);
+
+  // 4. Select GPU device
+  gpu_api_->setDevice(device_.index());
+
+  // 5. Create a dedicated internal stream for executor launches
+  if (options.high_priority_stream) {
+    int least_priority = 0, greatest_priority = 0;
+    gpu_api_->getStreamPriorityRange(&least_priority, &greatest_priority);
+    gpu_api_->streamCreateWithPriority(
+        &internal_stream_, cudaStreamNonBlocking, greatest_priority);
+  } else {
+    gpu_api_->streamCreateWithPriority(
+        &internal_stream_, cudaStreamNonBlocking, 0);
+  }
+
+  // 6. Create Executor
+  executor_ = mscclpp_api_->createExecutor(comm_);
+
+  // 7. Create GPU event pool (backed by the same gpu_api_)
+  event_pool_ =
+      std::make_unique<MscclppGpuEventPool>(gpu_api_.get(), /*max_size=*/256);
+
+  // 8. Load execution plans
+  //    Priority: "torchcomm::mscclpp::plan_dir" hint > MSCCLPP_PLAN_DIR env
+  std::string plan_dir;
+  auto hint_it = options.hints.find("torchcomm::mscclpp::plan_dir");
+  if (hint_it != options.hints.end()) {
+    plan_dir = hint_it->second;
+  } else {
+    const char* env_plan_dir = std::getenv("MSCCLPP_PLAN_DIR");
+    if (env_plan_dir) {
+      plan_dir = env_plan_dir;
+    }
+  }
+  if (!plan_dir.empty()) {
+    loadPlans(plan_dir);
+  }
+#endif // HAS_MSCCLPP
+
   initialized_ = true;
+
+  LOG(INFO) << "[TorchCommMSCCLPP] Initialized: name=" << name_
+            << " rank=" << rank_ << "/" << size_ << " device=" << device_
+#ifdef HAS_MSCCLPP
+            << " plans_loaded=" << plans_.size()
+#endif
+      ;
 }
 
 void TorchCommMSCCLPP::finalize() {
-  // TODO: Tear down MSCCL++ state:
-  //   - Destroy executor
-  //   - Destroy internal GPU stream
-  //   - Reset communicator
-  //   - Clear plan cache
+  if (!initialized_) {
+    return;
+  }
+
+#ifdef HAS_MSCCLPP
+  // Drain pending work before tearing down
+  if (internal_stream_) {
+    gpu_api_->streamSynchronize(internal_stream_);
+  }
+
+  // Destroy executor before communicator (MSCCL++ requirement)
+  executor_.reset();
+
+  // Clear plan cache
+  plans_.clear();
+  event_pool_.reset();
+
+  // Destroy internal stream
+  if (internal_stream_) {
+    gpu_api_->streamDestroy(internal_stream_);
+    internal_stream_ = nullptr;
+  }
+
+  // Release communicator
+  comm_.reset();
+#endif // HAS_MSCCLPP
+
   initialized_ = false;
+
+  LOG(INFO) << "[TorchCommMSCCLPP] Finalized: name=" << name_;
 }
+
+#ifdef HAS_MSCCLPP
+
+void TorchCommMSCCLPP::loadPlans(const std::string& plan_dir) {
+  namespace fs = std::filesystem;
+  if (!fs::exists(plan_dir)) {
+    LOG(WARNING) << "[TorchCommMSCCLPP] Plan directory not found: " << plan_dir;
+    return;
+  }
+  for (const auto& entry : fs::directory_iterator(plan_dir)) {
+    if (entry.path().extension() == ".json") {
+      const std::string plan_name = entry.path().stem().string();
+      plans_[plan_name] =
+          mscclpp_api_->loadExecutionPlan(entry.path().string(), rank_);
+      LOG(INFO) << "[TorchCommMSCCLPP] Loaded plan: " << plan_name;
+    }
+  }
+}
+
+const mscclpp::ExecutionPlan& TorchCommMSCCLPP::selectPlan(
+    const std::string& collective,
+    size_t message_bytes,
+    const std::unordered_map<std::string, std::string>& hints) const {
+  // Explicit plan override via hint
+  auto hint_it = hints.find("torchcomm::mscclpp::plan");
+  if (hint_it != hints.end()) {
+    auto plan_it = plans_.find(hint_it->second);
+    if (plan_it != plans_.end()) {
+      return *plan_it->second;
+    }
+    throw std::runtime_error(
+        "[TorchCommMSCCLPP] Requested plan not found: " + hint_it->second);
+  }
+
+  // Auto-select by naming convention:
+  //   ≤1MB  → <collective>_sm_packet  (low-latency SM kernel)
+  //   >1MB  → <collective>_sm          (high-throughput SM kernel)
+  const std::string key = (message_bytes <= (1u << 20))
+      ? (collective + "_sm_packet")
+      : (collective + "_sm");
+
+  auto plan_it = plans_.find(key);
+  if (plan_it != plans_.end()) {
+    return *plan_it->second;
+  }
+
+  // Final fallback: bare collective name
+  plan_it = plans_.find(collective);
+  if (plan_it != plans_.end()) {
+    return *plan_it->second;
+  }
+
+  throw std::runtime_error(
+      "[TorchCommMSCCLPP] No plan found for collective '" + collective +
+      "' with message size " + std::to_string(message_bytes) +
+      ". Provide plans via MSCCLPP_PLAN_DIR or torchcomm::mscclpp::plan_dir hint.");
+}
+
+#endif // HAS_MSCCLPP
 
 int TorchCommMSCCLPP::getRank() const {
   return rank_;
