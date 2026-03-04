@@ -126,3 +126,48 @@ elseif(CUDA_FOUND)
 endif()
 
 install(TARGETS torchcomms_comms_mscclpp LIBRARY DESTINATION .)
+
+# Tests — only built when -DBUILD_TESTS=ON and MSCCL++ is available.
+# Tests live in tests/ alongside the source they exercise rather than in the
+# generic comms/torchcomms/tests/unit hierarchy.
+if(BUILD_TESTS AND MSCCLPP_FOUND)
+    enable_testing()
+    # Reuse the same GoogleTest that the generic test suite fetches.
+    # FetchContent is idempotent: if tests/unit/cpp already fetched it, this
+    # is a no-op; if mscclpp tests are built standalone, this fetches it.
+    include(FetchContent)
+    FetchContent_Declare(
+        googletest
+        GIT_REPOSITORY https://github.com/google/googletest.git
+        GIT_TAG v1.14.0
+    )
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(googletest)
+
+    # MscclppEventPoolTest — GPU event pool and TorchWorkMSCCLPP lifecycle.
+    # TorchWorkMSCCLPP.cpp and CudaApi.cpp are compiled directly into the
+    # binary because torchcomms_comms_mscclpp is a MODULE (not linkable).
+    add_executable(MscclppEventPoolTest
+        ${ROOT}/comms/torchcomms/mscclpp/tests/MscclppEventPoolTest.cpp
+        ${ROOT}/comms/torchcomms/mscclpp/TorchWorkMSCCLPP.cpp
+        ${ROOT}/comms/torchcomms/device/cuda/CudaApi.cpp
+    )
+    target_include_directories(MscclppEventPoolTest PRIVATE
+        ${ROOT}
+        ${MSCCLPP_INCLUDE}
+        ${CONDA_INCLUDE}
+        ${CUDA_INCLUDE_DIRS}
+    )
+    target_compile_features(MscclppEventPoolTest PRIVATE cxx_std_20)
+    target_compile_definitions(MscclppEventPoolTest PRIVATE HAS_MSCCLPP)
+    target_link_directories(MscclppEventPoolTest PRIVATE ${CONDA_LIB})
+    target_link_libraries(MscclppEventPoolTest PRIVATE
+        torchcomms
+        ${TORCH_LIBRARIES}
+        CUDA::cudart
+        GTest::gtest
+        GTest::gmock
+        "-lglog"
+    )
+    add_test(NAME MscclppEventPoolTest COMMAND MscclppEventPoolTest)
+endif()

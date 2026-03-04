@@ -161,8 +161,7 @@ void TorchWorkMSCCLPP::wait() {
     return;
   }
 
-  cudaStream_t current_stream =
-      cuda_api_->getCurrentCUDAStream(device_index_);
+  cudaStream_t current_stream = cuda_api_->getCurrentCUDAStream(device_index_);
 
   CUDA_CHECK(
       cuda_api_,
