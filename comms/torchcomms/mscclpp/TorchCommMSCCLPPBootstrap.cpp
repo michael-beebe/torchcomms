@@ -32,8 +32,7 @@ TorchCommMSCCLPPBootstrap::~TorchCommMSCCLPPBootstrap() noexcept = default;
 mscclpp::UniqueId TorchCommMSCCLPPBootstrap::exchangeUniqueId(
     const std::string& name) {
   // Key format mirrors TorchCommNCCLBootstrap::getNCCLStoreKey().
-  std::string key =
-      fmt::format("mscclpp_uniqueid_{}{}", name, counter_++);
+  std::string key = fmt::format("mscclpp_uniqueid_{}{}", name, counter_++);
 
   mscclpp::UniqueId unique_id;
 
@@ -47,10 +46,11 @@ mscclpp::UniqueId TorchCommMSCCLPPBootstrap::exchangeUniqueId(
     store_->wait({key}, timeout_);
     auto vec = store_->get(key);
     if (vec.size() != sizeof(mscclpp::UniqueId)) {
-      throw std::runtime_error(fmt::format(
-          "[TorchCommMSCCLPPBootstrap] Invalid UniqueId size: expected {}, got {}",
-          sizeof(mscclpp::UniqueId),
-          vec.size()));
+      throw std::runtime_error(
+          fmt::format(
+              "[TorchCommMSCCLPPBootstrap] Invalid UniqueId size: expected {}, got {}",
+              sizeof(mscclpp::UniqueId),
+              vec.size()));
     }
     std::copy(vec.begin(), vec.end(), unique_id.begin());
   }
@@ -67,16 +67,16 @@ TorchCommMSCCLPPBootstrap::createCommunicator(
 
   // 2. Create TcpBootstrap and initialize all ranks with the same UniqueId
   auto bootstrap = api_->createTcpBootstrap(rank_, size_);
-  int64_t timeout_sec =
-      std::max(int64_t{1}, std::chrono::duration_cast<std::chrono::seconds>(timeout_).count());
+  int64_t timeout_sec = std::max(
+      int64_t{1},
+      std::chrono::duration_cast<std::chrono::seconds>(timeout_).count());
   api_->bootstrapInitialize(*bootstrap, unique_id, timeout_sec);
 
   // 3. Create communicator
   auto comm = api_->createCommunicator(bootstrap);
 
   TC_LOG(INFO) << "[TorchCommMSCCLPP] Communicator created: name=" << name
-               << " rank=" << rank_ << "/" << size_
-               << " device=" << device_;
+               << " rank=" << rank_ << "/" << size_ << " device=" << device_;
 
   return comm;
 }

@@ -40,7 +40,8 @@ class TorchCommMSCCLPPBootstrap {
 
   // Delete copy/move
   TorchCommMSCCLPPBootstrap(const TorchCommMSCCLPPBootstrap&) = delete;
-  TorchCommMSCCLPPBootstrap& operator=(const TorchCommMSCCLPPBootstrap&) = delete;
+  TorchCommMSCCLPPBootstrap& operator=(const TorchCommMSCCLPPBootstrap&) =
+      delete;
 
   /// Create and initialize the MSCCL++ communicator.
   std::shared_ptr<mscclpp::Communicator> createCommunicator(
