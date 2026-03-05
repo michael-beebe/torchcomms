@@ -103,13 +103,14 @@ void TorchCommMSCCLPP::init(
       std::make_shared<MscclppGpuEventPool>(gpu_api_, /*max_size=*/256);
 
   // 8. Load execution plans
-  //    Priority: "torchcomm::mscclpp::plan_dir" hint > MSCCLPP_PLAN_DIR env
+  //    Priority: "torchcomm::mscclpp::plan_dir" hint >
+  //    TORCHCOMM_MSCCLPP_PLAN_DIR env
   std::string plan_dir;
   auto hint_it = options.hints.find("torchcomm::mscclpp::plan_dir");
   if (hint_it != options.hints.end()) {
     plan_dir = hint_it->second;
   } else {
-    const char* env_plan_dir = std::getenv("MSCCLPP_PLAN_DIR");
+    const char* env_plan_dir = std::getenv("TORCHCOMM_MSCCLPP_PLAN_DIR");
     if (env_plan_dir) {
       plan_dir = env_plan_dir;
     }
@@ -234,7 +235,7 @@ const mscclpp::ExecutionPlan& TorchCommMSCCLPP::selectPlan(
   throw std::runtime_error(
       "[TorchCommMSCCLPP] No plan found for collective '" + collective +
       "' with message size " + std::to_string(message_bytes) +
-      ". Provide plans via MSCCLPP_PLAN_DIR or torchcomm::mscclpp::plan_dir hint.");
+      ". Provide plans via TORCHCOMM_MSCCLPP_PLAN_DIR or torchcomm::mscclpp::plan_dir hint.");
 }
 
 #endif // HAS_MSCCLPP

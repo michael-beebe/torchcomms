@@ -117,32 +117,32 @@ class TestMscclppBackendLifecycle(unittest.TestCase):
 class TestMscclppPlanLoading(unittest.TestCase):
     """Tests that loadPlans() handles edge-case plan directories gracefully.
 
-    These tests exercise the MSCCLPP_PLAN_DIR env-var path of init() without
+    These tests exercise the TORCHCOMM_MSCCLPP_PLAN_DIR env-var path of init() without
     real plan JSON files — verifying that bad or empty directories produce a
     warning (not a crash).
     """
 
     def _make_comm_with_plan_dir(self, plan_dir: str) -> torchcomms.TorchComm:
-        """Create a comm with MSCCLPP_PLAN_DIR temporarily set to plan_dir."""
-        orig = os.environ.get("MSCCLPP_PLAN_DIR")
+        """Create a comm with TORCHCOMM_MSCCLPP_PLAN_DIR temporarily set to plan_dir."""
+        orig = os.environ.get("TORCHCOMM_MSCCLPP_PLAN_DIR")
         try:
-            os.environ["MSCCLPP_PLAN_DIR"] = plan_dir
+            os.environ["TORCHCOMM_MSCCLPP_PLAN_DIR"] = plan_dir
             return torchcomms.new_comm(
                 "mscclpp", torch.device("cuda:0"), name="plan_dir_test"
             )
         finally:
             if orig is None:
-                os.environ.pop("MSCCLPP_PLAN_DIR", None)
+                os.environ.pop("TORCHCOMM_MSCCLPP_PLAN_DIR", None)
             else:
-                os.environ["MSCCLPP_PLAN_DIR"] = orig
+                os.environ["TORCHCOMM_MSCCLPP_PLAN_DIR"] = orig
 
     def test_nonexistent_plan_dir_does_not_raise(self) -> None:
-        """A non-existent MSCCLPP_PLAN_DIR should log a warning, not crash."""
+        """A non-existent TORCHCOMM_MSCCLPP_PLAN_DIR should log a warning, not crash."""
         comm = self._make_comm_with_plan_dir("/tmp/no_such_mscclpp_plan_dir_xyz_12345")
         comm.finalize()
 
     def test_empty_plan_dir_does_not_raise(self) -> None:
-        """An empty MSCCLPP_PLAN_DIR directory should not crash init()."""
+        """An empty TORCHCOMM_MSCCLPP_PLAN_DIR directory should not crash init()."""
         import tempfile
 
         with tempfile.TemporaryDirectory() as tmpdir:

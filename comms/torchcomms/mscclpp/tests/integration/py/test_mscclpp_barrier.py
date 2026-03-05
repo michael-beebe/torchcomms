@@ -41,9 +41,9 @@ def main() -> None:
     torch.cuda.set_device(device)
 
     tmp_plan_dir: tempfile.TemporaryDirectory | None = None
-    if "MSCCLPP_PLAN_DIR" not in os.environ:
+    if "TORCHCOMM_MSCCLPP_PLAN_DIR" not in os.environ:
         tmp_plan_dir = setup_plan_dir()
-        os.environ["MSCCLPP_PLAN_DIR"] = tmp_plan_dir.name
+        os.environ["TORCHCOMM_MSCCLPP_PLAN_DIR"] = tmp_plan_dir.name
 
     comm = torchcomms.new_comm("mscclpp", device, name="barrier_test")
 

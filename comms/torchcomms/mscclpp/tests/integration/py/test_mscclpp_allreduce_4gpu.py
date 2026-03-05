@@ -11,8 +11,8 @@
 #   torchrun --nproc_per_node=4 \
 #     comms/torchcomms/mscclpp/tests/integration/py/test_mscclpp_allreduce_4gpu.py
 #
-# Override the plan directory via MSCCLPP_PLAN_DIR:
-#   MSCCLPP_PLAN_DIR=/path/to/plans torchrun --nproc_per_node=4 \
+# Override the plan directory via TORCHCOMM_MSCCLPP_PLAN_DIR:
+#   TORCHCOMM_MSCCLPP_PLAN_DIR=/path/to/plans torchrun --nproc_per_node=4 \
 #     comms/torchcomms/mscclpp/tests/integration/py/test_mscclpp_allreduce_4gpu.py
 
 import os
@@ -68,9 +68,9 @@ def main() -> None:
     # Because each rank is an independent process under torchrun we must
     # set up the plan dir before calling new_comm().
     tmp_plan_dir: tempfile.TemporaryDirectory | None = None
-    if "MSCCLPP_PLAN_DIR" not in os.environ:
+    if "TORCHCOMM_MSCCLPP_PLAN_DIR" not in os.environ:
         tmp_plan_dir = setup_plan_dir()
-        os.environ["MSCCLPP_PLAN_DIR"] = tmp_plan_dir.name
+        os.environ["TORCHCOMM_MSCCLPP_PLAN_DIR"] = tmp_plan_dir.name
 
     # ------------------------------------------------------------------
     # Create communicator
@@ -78,7 +78,7 @@ def main() -> None:
     if rank == 0:
         print(
             f"[rank {rank}] Creating MSCCL++ communicator  "
-            f"world_size={world_size}  plan_dir={os.environ['MSCCLPP_PLAN_DIR']}",
+            f"world_size={world_size}  plan_dir={os.environ['TORCHCOMM_MSCCLPP_PLAN_DIR']}",
             flush=True,
         )
 

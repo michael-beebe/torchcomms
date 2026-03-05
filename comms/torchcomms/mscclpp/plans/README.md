@@ -4,7 +4,7 @@ This directory holds execution plan JSON files used by `TorchCommMSCCLPP`.
 
 ## How plans are loaded
 
-`init()` reads `MSCCLPP_PLAN_DIR` (env var) or the `torchcomm::mscclpp::plan_dir`
+`init()` reads `TORCHCOMM_MSCCLPP_PLAN_DIR` (env var) or the `torchcomm::mscclpp::plan_dir`
 hint to locate this directory. Every `*.json` file found is loaded into the plan
 cache keyed by its stem (filename without extension). `plan_manifest.json` is
 informational only — it documents the expected files and naming convention.
@@ -19,7 +19,7 @@ ls mscclpp/python/test/execution-files/
 ```
 
 Copy the relevant files into this directory (or any directory pointed to by
-`MSCCLPP_PLAN_DIR`). At minimum, `allreduce_sm_packet.json` and
+`TORCHCOMM_MSCCLPP_PLAN_DIR`). At minimum, `allreduce_sm_packet.json` and
 `allreduce_sm.json` are needed for the `all_reduce` collective.
 
 ## Naming convention
