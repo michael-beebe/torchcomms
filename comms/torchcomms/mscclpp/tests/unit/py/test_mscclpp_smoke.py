@@ -247,5 +247,29 @@ class TestMscclppBarrierValidation(unittest.TestCase):
         self.assertIn("allreduce", str(ctx.exception).lower())
 
 
+@unittest.skipUnless(
+    torch.cuda.is_available() and torch.cuda.device_count() > 0,
+    "No CUDA device available",
+)
+class TestMscclppAllGatherSingleValidation(unittest.TestCase):
+    """Validates all_gather_single() error-handling paths that don't require a plan."""
+
+    def setUp(self) -> None:
+        self.comm = torchcomms.new_comm(
+            "mscclpp", torch.device("cuda:0"), name="allgather_val_test"
+        )
+        self.input = torch.ones(64, device="cuda:0")
+        self.output = torch.zeros(256, device="cuda:0")
+
+    def tearDown(self) -> None:
+        self.comm.finalize()
+
+    def test_allgather_no_plans_raises_with_helpful_message(self) -> None:
+        """all_gather_single() with no plans loaded raises and names the collective."""
+        with self.assertRaises(RuntimeError) as ctx:
+            self.comm.all_gather_single(self.output, self.input, False)
+        self.assertIn("allgather", str(ctx.exception).lower())
+
+
 if __name__ == "__main__":
     unittest.main()

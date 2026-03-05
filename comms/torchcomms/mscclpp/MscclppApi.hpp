@@ -67,7 +67,8 @@ class MscclppApi {
 
   /// Execute a pre-loaded plan on the given stream.
   ///
-  /// send/recvSize are both set to `bytes` (in-place collectives).
+  /// send/recvSize are both set to `bytes` (in-place collectives where
+  /// sendBuffSize == recvBuffSize, e.g., allreduce, reduce, barrier).
   /// dataType must be mapped from the tensor dtype via torchDtypeToMscclpp().
   /// Uses cudaStream_t directly — matches mscclpp::Executor::execute().
   virtual void executePlan(
@@ -77,6 +78,21 @@ class MscclppApi {
       void* sendbuf,
       void* recvbuf,
       size_t bytes,
+      mscclpp::DataType dataType,
+      cudaStream_t stream) = 0;
+
+  /// Execute a pre-loaded plan with separate send and receive buffer sizes.
+  ///
+  /// Use this overload for collectives where sendBuffSize != recvBuffSize
+  /// (e.g., allgather: sendBytes = per-rank chunk, recvBytes = full output).
+  virtual void executePlan(
+      mscclpp::Executor& executor,
+      const mscclpp::ExecutionPlan& plan,
+      int rank,
+      void* sendbuf,
+      void* recvbuf,
+      size_t sendBytes,
+      size_t recvBytes,
       mscclpp::DataType dataType,
       cudaStream_t stream) = 0;
 };
@@ -116,6 +132,17 @@ class DefaultMscclppApi : public MscclppApi {
       void* sendbuf,
       void* recvbuf,
       size_t bytes,
+      mscclpp::DataType dataType,
+      cudaStream_t stream) override;
+
+  void executePlan(
+      mscclpp::Executor& executor,
+      const mscclpp::ExecutionPlan& plan,
+      int rank,
+      void* sendbuf,
+      void* recvbuf,
+      size_t sendBytes,
+      size_t recvBytes,
       mscclpp::DataType dataType,
       cudaStream_t stream) override;
 

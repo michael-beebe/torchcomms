@@ -385,12 +385,60 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::all_gather_v(
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::all_gather_single(
-    at::Tensor& /*output*/,
-    const at::Tensor& /*input*/,
-    bool /*async_op*/,
-    const AllGatherSingleOptions& /*options*/) {
+    at::Tensor& output,
+    const at::Tensor& input,
+    bool async_op,
+    const AllGatherSingleOptions& options) {
+  checkInitialized();
+
+#ifdef HAS_MSCCLPP
+  auto input_contig = mscclpp_utils::ensureContiguous(input);
+  output = mscclpp_utils::ensureContiguous(output);
+
+  // all_gather_single: each rank contributes input of size N; output is
+  // world_size * N.  MSCCLPP's in-place allgather plan expects this rank's
+  // data to already be staged at output[rank * N] before execution.
+  const size_t chunk_bytes = static_cast<size_t>(input_contig.nbytes());
+  const size_t output_bytes = static_cast<size_t>(output.nbytes());
+
+  const auto& plan = selectPlan("allgather", chunk_bytes, options.hints);
+
+  auto stream = mscclpp_utils::getOperationStream(
+      async_op, internal_stream_, device_.index());
+
+  auto work = c10::make_intrusive<TorchWorkMSCCLPP>(
+      stream, device_.index(), options.timeout, event_pool_, gpu_api_);
+  work->recordStart();
+
+  // Pre-stage this rank's input at the correct slot in the output buffer.
+  cudaMemcpyAsync(
+      static_cast<char*>(output.data_ptr()) +
+          static_cast<size_t>(rank_) * chunk_bytes,
+      input_contig.data_ptr(),
+      chunk_bytes,
+      cudaMemcpyDeviceToDevice,
+      stream);
+
+  // Execute allgather: both sendbuf and recvbuf point to the full output
+  // buffer; sendBytes is the per-rank chunk size, recvBytes is the full
+  // output size.
+  mscclpp_api_->executePlan(
+      *executor_,
+      plan,
+      rank_,
+      output.data_ptr(),
+      output.data_ptr(),
+      chunk_bytes,
+      output_bytes,
+      torchDtypeToMscclpp(input_contig.scalar_type()),
+      stream);
+
+  work->recordEnd();
+  return work;
+#else
   throw std::runtime_error(
-      "[TorchCommMSCCLPP] all_gather_single() not yet implemented.");
+      "[TorchCommMSCCLPP] all_gather_single() requires MSCCL++ (built without HAS_MSCCLPP).");
+#endif
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::reduce_scatter(
