@@ -462,13 +462,62 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::reduce_scatter_v(
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::reduce_scatter_single(
-    at::Tensor& /*output*/,
-    const at::Tensor& /*input*/,
-    const ReduceOp& /*op*/,
-    bool /*async_op*/,
-    const ReduceScatterSingleOptions& /*options*/) {
+    at::Tensor& output,
+    const at::Tensor& input,
+    const ReduceOp& op,
+    bool async_op,
+    const ReduceScatterSingleOptions& options) {
+  checkInitialized();
+
+#ifdef HAS_MSCCLPP
+  mscclpp_utils::validateReduceOp(op, "reduce_scatter_single");
+
+  auto input_contig = mscclpp_utils::ensureContiguous(input);
+  output = mscclpp_utils::ensureContiguous(output);
+
+  // reduce_scatter_single: input has world_size * N elements; output has N.
+  // Implemented as all_reduce on the full input buffer, then
+  // cudaMemcpyAsync to copy this rank's chunk to output.
+  // Both operations are enqueued on the same stream, so they are
+  // naturally ordered without an explicit event between them.
+  const size_t output_bytes = static_cast<size_t>(output.nbytes());
+
+  const auto& plan =
+      selectPlan("allreduce", input_contig.nbytes(), options.hints);
+
+  auto stream = mscclpp_utils::getOperationStream(
+      async_op, internal_stream_, device_.index());
+
+  auto work = c10::make_intrusive<TorchWorkMSCCLPP>(
+      stream, device_.index(), options.timeout, event_pool_, gpu_api_);
+  work->recordStart();
+
+  // Step 1: all_reduce the full input in-place.
+  mscclpp_api_->executePlan(
+      *executor_,
+      plan,
+      rank_,
+      input_contig.data_ptr(),
+      input_contig.data_ptr(), // in-place
+      input_contig.nbytes(),
+      torchDtypeToMscclpp(input_contig.scalar_type()),
+      stream);
+
+  // Step 2: copy this rank's chunk from the reduced input to output.
+  cudaMemcpyAsync(
+      output.data_ptr(),
+      static_cast<char*>(input_contig.data_ptr()) +
+          static_cast<size_t>(rank_) * output_bytes,
+      output_bytes,
+      cudaMemcpyDeviceToDevice,
+      stream);
+
+  work->recordEnd();
+  return work;
+#else
   throw std::runtime_error(
-      "[TorchCommMSCCLPP] reduce_scatter_single() not yet implemented.");
+      "[TorchCommMSCCLPP] reduce_scatter_single() requires MSCCL++ (built without HAS_MSCCLPP).");
+#endif
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::all_to_all_single(

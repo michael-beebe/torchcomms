@@ -27,6 +27,7 @@ os.environ.setdefault("MASTER_ADDR", "localhost")
 os.environ.setdefault("MASTER_PORT", "0")
 os.environ.setdefault("WORLD_SIZE", "1")
 os.environ.setdefault("RANK", "0")
+os.environ.setdefault("LOCAL_RANK", "0")
 
 
 class TestMscclppModuleImport(unittest.TestCase):
@@ -269,6 +270,40 @@ class TestMscclppAllGatherSingleValidation(unittest.TestCase):
         with self.assertRaises(RuntimeError) as ctx:
             self.comm.all_gather_single(self.output, self.input, False)
         self.assertIn("allgather", str(ctx.exception).lower())
+
+
+@unittest.skipUnless(
+    torch.cuda.is_available() and torch.cuda.device_count() > 0,
+    "No CUDA device available",
+)
+class TestMscclppReduceScatterSingleValidation(unittest.TestCase):
+    """Validates reduce_scatter_single() error-handling paths that don't require a plan."""
+
+    def setUp(self) -> None:
+        self.comm = torchcomms.new_comm(
+            "mscclpp", torch.device("cuda:0"), name="reducescatter_val_test"
+        )
+        self.input = torch.ones(256, device="cuda:0")
+        self.output = torch.zeros(64, device="cuda:0")
+
+    def tearDown(self) -> None:
+        self.comm.finalize()
+
+    def test_reduce_scatter_non_sum_raises(self) -> None:
+        """reduce_scatter_single() with a non-SUM op raises before touching a plan."""
+        with self.assertRaises(RuntimeError) as ctx:
+            self.comm.reduce_scatter_single(
+                self.output, self.input, torchcomms.ReduceOp.MAX, False
+            )
+        self.assertIn("SUM", str(ctx.exception))
+
+    def test_reduce_scatter_no_plans_raises_with_helpful_message(self) -> None:
+        """reduce_scatter_single() with no plans loaded raises and names the collective."""
+        with self.assertRaises(RuntimeError) as ctx:
+            self.comm.reduce_scatter_single(
+                self.output, self.input, torchcomms.ReduceOp.SUM, False
+            )
+        self.assertIn("allreduce", str(ctx.exception).lower())
 
 
 if __name__ == "__main__":
