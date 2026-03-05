@@ -9,10 +9,11 @@
 #
 # Run with:
 #   torchrun --nproc_per_node=4 \
-#     comms/torchcomms/mscclpp/tests/test_mscclpp_allreduce_4gpu.py
+#     comms/torchcomms/mscclpp/tests/integration/py/test_mscclpp_allreduce_4gpu.py
 #
 # Override the plan directory via MSCCLPP_PLAN_DIR:
-#   MSCCLPP_PLAN_DIR=/path/to/plans torchrun --nproc_per_node=4 ...
+#   MSCCLPP_PLAN_DIR=/path/to/plans torchrun --nproc_per_node=4 \
+#     comms/torchcomms/mscclpp/tests/integration/py/test_mscclpp_allreduce_4gpu.py
 
 import os
 import shutil

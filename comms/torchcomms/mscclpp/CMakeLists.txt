@@ -148,7 +148,7 @@ if(BUILD_TESTS AND MSCCLPP_FOUND)
     # TorchWorkMSCCLPP.cpp and CudaApi.cpp are compiled directly into the
     # binary because torchcomms_comms_mscclpp is a MODULE (not linkable).
     add_executable(MscclppEventPoolTest
-        ${ROOT}/comms/torchcomms/mscclpp/tests/MscclppEventPoolTest.cpp
+        ${ROOT}/comms/torchcomms/mscclpp/tests/unit/cpp/MscclppEventPoolTest.cpp
         ${ROOT}/comms/torchcomms/mscclpp/TorchWorkMSCCLPP.cpp
         ${ROOT}/comms/torchcomms/device/cuda/CudaApi.cpp
     )
@@ -175,7 +175,7 @@ if(BUILD_TESTS AND MSCCLPP_FOUND)
     # Exercises selectPlan() / loadPlans() via a friend fixture without needing
     # a real MSCCL++ communicator or CUDA device.
     add_executable(MscclppPlanTest
-        ${ROOT}/comms/torchcomms/mscclpp/tests/MscclppPlanTest.cpp
+        ${ROOT}/comms/torchcomms/mscclpp/tests/unit/cpp/MscclppPlanTest.cpp
         ${ROOT}/comms/torchcomms/mscclpp/TorchCommMSCCLPP.cpp
         ${ROOT}/comms/torchcomms/mscclpp/TorchCommMSCCLPPBootstrap.cpp
         ${ROOT}/comms/torchcomms/mscclpp/MscclppApi.cpp
@@ -219,7 +219,7 @@ if(BUILD_TESTS AND MSCCLPP_FOUND)
     # guard on all_reduce().  No real communicator or CUDA device required for
     # any of these tests.
     add_executable(MscclppCollectiveTest
-        ${ROOT}/comms/torchcomms/mscclpp/tests/MscclppCollectiveTest.cpp
+        ${ROOT}/comms/torchcomms/mscclpp/tests/unit/cpp/MscclppCollectiveTest.cpp
         ${ROOT}/comms/torchcomms/mscclpp/TorchCommMSCCLPP.cpp
         ${ROOT}/comms/torchcomms/mscclpp/TorchCommMSCCLPPBootstrap.cpp
         ${ROOT}/comms/torchcomms/mscclpp/MscclppApi.cpp
