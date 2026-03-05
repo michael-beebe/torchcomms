@@ -153,22 +153,34 @@ TorchWork::WorkStatus TorchWorkMSCCLPP::checkStatus() {
   return status();
 }
 
-// Insert a GPU-side dependency: make the caller's current stream wait for
-// end_event_ without blocking the CPU thread.
-// This is identical to TorchWorkNCCL::wait() — pure GPU synchronization.
+// CPU-block until the collective GPU kernel has fully completed on this rank.
+//
+// MSCCLPP memory-channel kernels poll peer GPU memory via NVLink.  As long
+// as any rank's kernel is still running, it must be able to access all peers'
+// NVLink-registered memory.  finalize() destroys the communicator and
+// unregisters that memory, so it is ONLY safe to call finalize() once every
+// rank has confirmed its own GPU kernel is done.
+//
+// cudaEventSynchronize() blocks the CPU thread until end_event_ fires, i.e.,
+// until the GPU has executed past recordEnd() on op_stream_.  After wait()
+// returns, this rank's collective kernel is guaranteed complete.
 void TorchWorkMSCCLPP::wait() {
-  WorkStatus current = status();
+  WorkStatus current = checkStatus();
   if (current == WorkStatus::COMPLETED || current == WorkStatus::ERROR ||
       current == WorkStatus::TIMEDOUT) {
     return;
   }
 
-  cudaStream_t current_stream = cuda_api_->getCurrentCUDAStream(device_index_);
-
-  CUDA_CHECK(
-      cuda_api_,
-      cuda_api_->streamWaitEvent(current_stream, end_event_, 0),
-      "Failed to make stream wait for MSCCL++ end event");
+  // CPU-blocking wait: the calling thread sleeps until the GPU reaches
+  // end_event_, which is recorded after the executor call returns.
+  cudaError_t err = cudaEventSynchronize(end_event_);
+  if (err == cudaSuccess) {
+    setStatus(WorkStatus::COMPLETED);
+  } else {
+    LOG(ERROR) << "[TorchWorkMSCCLPP] cudaEventSynchronize failed: "
+               << cudaGetErrorString(err);
+    setStatus(WorkStatus::ERROR);
+  }
 }
 
 } // namespace torch::comms

@@ -50,7 +50,10 @@ def main() -> None:
     # ------------------------------------------------------------------
     # Test 1: sync barrier does not hang
     # ------------------------------------------------------------------
-    comm.barrier(False)
+    # MSCCLPP collective kernels are non-blocking launches — always call
+    # work.wait() to ensure GPU completion before proceeding.
+    work = comm.barrier(False)
+    work.wait()
     if rank == 0:
         print(f"[rank {rank}] barrier sync: PASS", flush=True)
 
@@ -65,16 +68,17 @@ def main() -> None:
     # ------------------------------------------------------------------
     # Test 3: multiple barriers in sequence
     # ------------------------------------------------------------------
-    for i in range(5):
-        comm.barrier(False)
+    # Each barrier must complete before the next starts: MSCCLPP reuses
+    # scratch buffers across calls, so overlapping submissions corrupt
+    # the collective protocol.
+    for _ in range(5):
+        work = comm.barrier(False)
+        work.wait()
     if rank == 0:
         print(f"[rank {rank}] barrier x5 sequence: PASS", flush=True)
 
-    # Drain all pending GPU work on every rank before teardown.
-    # Without this, fast ranks can enter finalize() while others are still
-    # completing their last barrier, causing MSCCLPP bootstrap to hang.
-    torch.cuda.synchronize(device)
-
+    # finalize() drains both the internal stream and the current CUDA stream
+    # before tearing down the executor, so no explicit synchronize is needed.
     comm.finalize()
 
     if tmp_plan_dir is not None:

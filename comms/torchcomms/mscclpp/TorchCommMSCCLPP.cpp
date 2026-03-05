@@ -135,21 +135,29 @@ void TorchCommMSCCLPP::finalize() {
   }
 
 #ifdef HAS_MSCCLPP
-  // Drain all pending GPU work on both streams:
-  //   - internal_stream_: used by async ops
-  //   - current CUDA stream: used by synchronous ops (async_op=false)
+  // Drain our own streams while the communicator (and NVLink memory) is alive.
+  //
+  // After work.wait() (which CPU-blocks), this rank's collective kernel is
+  // done.  However, ring-algorithm collectives may finish on different ranks
+  // at slightly different times — rank 0 can complete its last ring step while
+  // rank 3's kernel is still handling its last chunk.
+  //
+  // Teardown sequence:
+  //   1. Sync our own streams (fast — work is already done per wait()).
+  //   2. bootstrap()->barrier(): CPU rendezvous that ensures ALL ranks have
+  //      drained their GPU work before ANY rank destroys its communicator.
+  //      Once all ranks return from the barrier, no NVLink polling kernel is
+  //      running anywhere, so comm_.reset() is safe.
+  //   3. CPU-side teardown: executor, plans, event pool, stream, comm.
   if (internal_stream_) {
     gpu_api_->streamSynchronize(internal_stream_);
   }
   gpu_api_->streamSynchronize(
       at::cuda::getCurrentCUDAStream(device_.index()).stream());
 
-  // Destroy the executor before the communicator (MSCCL++ requirement).
-  // executor_.reset() joins any CPU-side executor threads, ensuring all
-  // collective callbacks have completed.  At this point no rank is inside
-  // a collective, so it is safe to destroy the communicator without a
-  // separate bootstrap barrier (which itself is prone to races when
-  // ranks reach teardown at different speeds after a burst of collectives).
+  // All ranks rendezvous here before any comm is destroyed.
+  comm_->bootstrap()->barrier();
+
   executor_.reset();
 
   // Clear plan cache and event pool.
@@ -162,7 +170,8 @@ void TorchCommMSCCLPP::finalize() {
     internal_stream_ = nullptr;
   }
 
-  // Release communicator last.
+  // Release communicator last (unregisters NVLink memory).
+  // Safe: all ranks passed the bootstrap barrier above.
   comm_.reset();
 #endif // HAS_MSCCLPP
 

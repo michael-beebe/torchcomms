@@ -76,7 +76,9 @@ def main() -> None:
     # ------------------------------------------------------------------
     # Test 2: async reduce
     # ------------------------------------------------------------------
-    tensor2 = torch.full((n_elems,), float(rank + 1), dtype=torch.float32, device=device)
+    tensor2 = torch.full(
+        (n_elems,), float(rank + 1), dtype=torch.float32, device=device
+    )
     work2 = comm.reduce(tensor2, 0, torchcomms.ReduceOp.SUM, True)
     work2.wait()
 
