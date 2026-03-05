@@ -196,5 +196,56 @@ class TestMscclppAllReduceValidation(unittest.TestCase):
         self.assertIn("allreduce", str(ctx.exception).lower())
 
 
+@unittest.skipUnless(
+    torch.cuda.is_available() and torch.cuda.device_count() > 0,
+    "No CUDA device available",
+)
+class TestMscclppReduceValidation(unittest.TestCase):
+    """Validates reduce() error-handling paths that don't require a plan."""
+
+    def setUp(self) -> None:
+        self.comm = torchcomms.new_comm(
+            "mscclpp", torch.device("cuda:0"), name="reduce_val_test"
+        )
+        self.tensor = torch.ones(64, device="cuda:0")
+
+    def tearDown(self) -> None:
+        self.comm.finalize()
+
+    def test_non_sum_reduce_raises(self) -> None:
+        """Non-SUM op is rejected before any plan lookup."""
+        with self.assertRaises(RuntimeError) as ctx:
+            self.comm.reduce(self.tensor, 0, torchcomms.ReduceOp.MAX, False)
+        self.assertIn("SUM", str(ctx.exception))
+
+    def test_sum_reduce_no_plans_raises_with_helpful_message(self) -> None:
+        """SUM reduce with no plans raises and names the collective."""
+        with self.assertRaises(RuntimeError) as ctx:
+            self.comm.reduce(self.tensor, 0, torchcomms.ReduceOp.SUM, False)
+        self.assertIn("allreduce", str(ctx.exception).lower())
+
+
+@unittest.skipUnless(
+    torch.cuda.is_available() and torch.cuda.device_count() > 0,
+    "No CUDA device available",
+)
+class TestMscclppBarrierValidation(unittest.TestCase):
+    """Validates barrier() error-handling paths that don't require a plan."""
+
+    def setUp(self) -> None:
+        self.comm = torchcomms.new_comm(
+            "mscclpp", torch.device("cuda:0"), name="barrier_val_test"
+        )
+
+    def tearDown(self) -> None:
+        self.comm.finalize()
+
+    def test_barrier_no_plans_raises_with_helpful_message(self) -> None:
+        """barrier() with no plans loaded raises and mentions allreduce (its implementation)."""
+        with self.assertRaises(RuntimeError) as ctx:
+            self.comm.barrier(False)
+        self.assertIn("allreduce", str(ctx.exception).lower())
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -28,7 +28,8 @@ using namespace torch::comms;
 
 TEST(ValidateReduceOpTest, SumPassesWithoutThrow) {
   EXPECT_NO_THROW(
-      mscclpp_utils::validateReduceOp(ReduceOp(ReduceOp::RedOpType::SUM), "allreduce"));
+      mscclpp_utils::validateReduceOp(
+          ReduceOp(ReduceOp::RedOpType::SUM), "allreduce"));
 }
 
 TEST(ValidateReduceOpTest, ProductThrows) {

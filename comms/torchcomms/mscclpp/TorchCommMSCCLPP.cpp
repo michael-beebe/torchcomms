@@ -135,33 +135,34 @@ void TorchCommMSCCLPP::finalize() {
   }
 
 #ifdef HAS_MSCCLPP
-  // Drain pending work before tearing down
+  // Drain all pending GPU work on both streams:
+  //   - internal_stream_: used by async ops
+  //   - current CUDA stream: used by synchronous ops (async_op=false)
   if (internal_stream_) {
     gpu_api_->streamSynchronize(internal_stream_);
   }
+  gpu_api_->streamSynchronize(
+      at::cuda::getCurrentCUDAStream(device_.index()).stream());
 
-  // Synchronize all ranks before tearing down connections.
-  // Bootstrap::barrier() is a collective — all ranks must call finalize()
-  // before any rank destroys its Executor or Communicator, otherwise
-  // connection teardown on one rank races with an active peer.
-  if (comm_) {
-    comm_->bootstrap()->barrier();
-  }
-
-  // Destroy executor before communicator (MSCCL++ requirement)
+  // Destroy the executor before the communicator (MSCCL++ requirement).
+  // executor_.reset() joins any CPU-side executor threads, ensuring all
+  // collective callbacks have completed.  At this point no rank is inside
+  // a collective, so it is safe to destroy the communicator without a
+  // separate bootstrap barrier (which itself is prone to races when
+  // ranks reach teardown at different speeds after a burst of collectives).
   executor_.reset();
 
-  // Clear plan cache
+  // Clear plan cache and event pool.
   plans_.clear();
   event_pool_.reset();
 
-  // Destroy internal stream
+  // Destroy internal stream.
   if (internal_stream_) {
     gpu_api_->streamDestroy(internal_stream_);
     internal_stream_ = nullptr;
   }
 
-  // Release communicator
+  // Release communicator last.
   comm_.reset();
 #endif // HAS_MSCCLPP
 
@@ -331,12 +332,29 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::all_reduce(
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::reduce(
-    const at::Tensor& /*tensor*/,
+    const at::Tensor& tensor,
     int /*root*/,
-    const ReduceOp& /*op*/,
-    bool /*async_op*/,
-    const ReduceOptions& /*options*/) {
-  throw std::runtime_error("[TorchCommMSCCLPP] reduce() not yet implemented.");
+    const ReduceOp& op,
+    bool async_op,
+    const ReduceOptions& options) {
+  checkInitialized();
+
+#ifdef HAS_MSCCLPP
+  mscclpp_utils::validateReduceOp(op, "reduce");
+
+  // Implement as all_reduce operating in-place on the caller's tensor.
+  // All ranks compute the full reduction; non-root callers are expected
+  // to discard their result. A dedicated reduce plan can optimize later.
+  // Use a non-const alias (no data copy) so the caller's tensor is updated.
+  auto tensor_mut = tensor; // same storage, no clone
+  AllReduceOptions ar_opts;
+  ar_opts.hints = options.hints;
+  ar_opts.timeout = options.timeout;
+  return all_reduce(tensor_mut, op, async_op, ar_opts);
+#else
+  throw std::runtime_error(
+      "[TorchCommMSCCLPP] reduce() requires MSCCL++ (built without HAS_MSCCLPP).");
+#endif
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::all_gather(
@@ -426,9 +444,26 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::all_to_all(
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::barrier(
-    bool /*async_op*/,
-    const BarrierOptions& /*options*/) {
-  throw std::runtime_error("[TorchCommMSCCLPP] barrier() not yet implemented.");
+    bool async_op,
+    const BarrierOptions& options) {
+  checkInitialized();
+
+#ifdef HAS_MSCCLPP
+  // Dummy all_reduce on a small aligned buffer.  We use 1024 float32
+  // elements (4 KiB) rather than 1 element because MSCCL++ plans require
+  // totalSize to be divisible by both their chunk count and buffer_alignment.
+  // 4 KiB satisfies any plan with <= 1024 chunks at any power-of-2 alignment.
+  auto dummy =
+      at::zeros({1024}, at::TensorOptions().dtype(at::kFloat).device(device_));
+  AllReduceOptions ar_opts;
+  ar_opts.hints = options.hints;
+  ar_opts.timeout = options.timeout;
+  return all_reduce(
+      dummy, ReduceOp(ReduceOp::RedOpType::SUM), async_op, ar_opts);
+#else
+  throw std::runtime_error(
+      "[TorchCommMSCCLPP] barrier() requires MSCCL++ (built without HAS_MSCCLPP).");
+#endif
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::scatter(
