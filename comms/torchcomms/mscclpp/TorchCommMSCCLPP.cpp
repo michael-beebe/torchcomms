@@ -342,29 +342,15 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::all_reduce(
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::reduce(
-    const at::Tensor& tensor,
+    const at::Tensor& /*tensor*/,
     int /*root*/,
-    const ReduceOp& op,
-    bool async_op,
-    const ReduceOptions& options) {
-  checkInitialized();
-
-#ifdef HAS_MSCCLPP
-  mscclpp_utils::validateReduceOp(op, "reduce");
-
-  // Implement as all_reduce operating in-place on the caller's tensor.
-  // All ranks compute the full reduction; non-root callers are expected
-  // to discard their result. A dedicated reduce plan can optimize later.
-  // Use a non-const alias (no data copy) so the caller's tensor is updated.
-  auto tensor_mut = tensor; // same storage, no clone
-  AllReduceOptions ar_opts;
-  ar_opts.hints = options.hints;
-  ar_opts.timeout = options.timeout;
-  return all_reduce(tensor_mut, op, async_op, ar_opts);
-#else
+    const ReduceOp& /*op*/,
+    bool /*async_op*/,
+    const ReduceOptions& /*options*/) {
   throw std::runtime_error(
-      "[TorchCommMSCCLPP] reduce() requires MSCCL++ (built without HAS_MSCCLPP).");
-#endif
+      "[TorchCommMSCCLPP] reduce() is not supported. "
+      "MSCCL++ does not provide a native reduce collective or execution plan. "
+      "Use a separate NCCL (NVIDIA) or RCCL (AMD) communicator for reduce.");
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::all_gather(
@@ -463,62 +449,15 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::reduce_scatter_v(
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::reduce_scatter_single(
-    at::Tensor& output,
-    const at::Tensor& input,
-    const ReduceOp& op,
-    bool async_op,
-    const ReduceScatterSingleOptions& options) {
-  checkInitialized();
-
-#ifdef HAS_MSCCLPP
-  mscclpp_utils::validateReduceOp(op, "reduce_scatter_single");
-
-  auto input_contig = mscclpp_utils::ensureContiguous(input);
-  output = mscclpp_utils::ensureContiguous(output);
-
-  // reduce_scatter_single: input has world_size * N elements; output has N.
-  // Implemented as all_reduce on the full input buffer, then
-  // cudaMemcpyAsync to copy this rank's chunk to output.
-  // Both operations are enqueued on the same stream, so they are
-  // naturally ordered without an explicit event between them.
-  const size_t output_bytes = static_cast<size_t>(output.nbytes());
-
-  const auto& plan =
-      selectPlan("allreduce", input_contig.nbytes(), options.hints);
-
-  auto stream = mscclpp_utils::getOperationStream(
-      async_op, internal_stream_, device_.index());
-
-  auto work = c10::make_intrusive<TorchWorkMSCCLPP>(
-      stream, device_.index(), options.timeout, event_pool_, gpu_api_);
-  work->recordStart();
-
-  // Step 1: all_reduce the full input in-place.
-  mscclpp_api_->executePlan(
-      *executor_,
-      plan,
-      rank_,
-      input_contig.data_ptr(),
-      input_contig.data_ptr(), // in-place
-      input_contig.nbytes(),
-      torchDtypeToMscclpp(input_contig.scalar_type()),
-      stream);
-
-  // Step 2: copy this rank's chunk from the reduced input to output.
-  cudaMemcpyAsync(
-      output.data_ptr(),
-      static_cast<char*>(input_contig.data_ptr()) +
-          static_cast<size_t>(rank_) * output_bytes,
-      output_bytes,
-      cudaMemcpyDeviceToDevice,
-      stream);
-
-  work->recordEnd();
-  return work;
-#else
+    at::Tensor& /*output*/,
+    const at::Tensor& /*input*/,
+    const ReduceOp& /*op*/,
+    bool /*async_op*/,
+    const ReduceScatterSingleOptions& /*options*/) {
   throw std::runtime_error(
-      "[TorchCommMSCCLPP] reduce_scatter_single() requires MSCCL++ (built without HAS_MSCCLPP).");
-#endif
+      "[TorchCommMSCCLPP] reduce_scatter_single() is not supported. "
+      "MSCCL++ does not provide a native reduce-scatter collective or execution plan. "
+      "Use a separate NCCL (NVIDIA) or RCCL (AMD) communicator for reduce_scatter.");
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::all_to_all_single(
@@ -551,26 +490,12 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::all_to_all(
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::barrier(
-    bool async_op,
-    const BarrierOptions& options) {
-  checkInitialized();
-
-#ifdef HAS_MSCCLPP
-  // Dummy all_reduce on a small aligned buffer.  We use 1024 float32
-  // elements (4 KiB) rather than 1 element because MSCCL++ plans require
-  // totalSize to be divisible by both their chunk count and buffer_alignment.
-  // 4 KiB satisfies any plan with <= 1024 chunks at any power-of-2 alignment.
-  auto dummy =
-      at::zeros({1024}, at::TensorOptions().dtype(at::kFloat).device(device_));
-  AllReduceOptions ar_opts;
-  ar_opts.hints = options.hints;
-  ar_opts.timeout = options.timeout;
-  return all_reduce(
-      dummy, ReduceOp(ReduceOp::RedOpType::SUM), async_op, ar_opts);
-#else
+    bool /*async_op*/,
+    const BarrierOptions& /*options*/) {
   throw std::runtime_error(
-      "[TorchCommMSCCLPP] barrier() requires MSCCL++ (built without HAS_MSCCLPP).");
-#endif
+      "[TorchCommMSCCLPP] barrier() is not supported. "
+      "MSCCL++ does not provide a native barrier collective. "
+      "Use a separate NCCL (NVIDIA) or RCCL (AMD) communicator for barrier.");
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::scatter(

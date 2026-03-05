@@ -115,18 +115,6 @@ TEST(MscclppCheckInitializedTest, AllGatherSingleThrowsBeforeInit) {
       comm.all_gather_single(output, input, false, {}), std::runtime_error);
 }
 
-TEST(MscclppCheckInitializedTest, ReduceScatterSingleThrowsBeforeInit) {
-  // Calling reduce_scatter_single() on an uninitialized comm must throw
-  // immediately via checkInitialized(), before any GPU or plan access.
-  TorchCommMSCCLPP comm;
-  auto input = at::ones({256});
-  auto output = at::zeros({64});
-  EXPECT_THROW(
-      comm.reduce_scatter_single(
-          output, input, ReduceOp(ReduceOp::RedOpType::SUM), false, {}),
-      std::runtime_error);
-}
-
 #else // !HAS_MSCCLPP
 
 TEST(MscclppCollectiveTestStub, SkippedWithoutMscclpp) {
