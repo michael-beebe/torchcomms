@@ -155,6 +155,30 @@ export USE_TRANSPORT=OFF
 pip install --no-build-isolation -v .
 ```
 
+##### MSCCL++ Backend
+
+MSCCL++ (Microsoft Collective Communication Library++) provides high-performance
+allreduce and allgather via executor-based execution plans. Supports both NVIDIA
+(CUDA) and AMD (ROCm).
+
+Build MSCCL++ from source:
+```bash
+./build_mscclpp.sh              # CUDA (default)
+./build_mscclpp.sh --rocm       # ROCm
+./build_mscclpp.sh --clean      # Clean rebuild
+```
+
+Then install torchcomms with the MSCCL++ backend:
+```bash
+export MSCCLPP_HOME=$PWD/third-party/mscclpp/install
+USE_MSCCLPP=ON pip install --no-build-isolation -v .
+
+# Set plan directory (required at runtime for collectives)
+export TORCHCOMM_MSCCLPP_PLAN_DIR=/path/to/execution-plans
+```
+
+See https://github.com/microsoft/mscclpp for more information.
+
 
 #### Install torchcomms:
 
@@ -189,6 +213,7 @@ export USE_GLOO=ON    # Default: ON
 export USE_RCCL=OFF   # Default: OFF
 export USE_RCCLX=OFF  # Default: OFF
 export USE_XCCL=OFF   # Default: OFF
+export USE_MSCCLPP=OFF # Default: OFF
 ```
 
 Then run:

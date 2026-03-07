@@ -67,6 +67,7 @@ Backend selection is controlled by environment variables (ON/OFF or 1/0) set bef
 | `USE_RCCL` | OFF | AMD ROCm |
 | `USE_RCCLX` | OFF | Meta's extended RCCL |
 | `USE_XCCL` | OFF | Intel XPU |
+| `USE_MSCCLPP` | OFF | Microsoft MSCCL++ (CUDA + ROCm) |
 | `USE_TRANSPORT` | ON (OFF on ROCm) | RDMA transport layer |
 | `USE_SYSTEM_LIBS` | unset | When set, uses conda/system libs instead of building from source |
 
@@ -129,6 +130,37 @@ source $INTEL_ONEAPI/compiler/latest/env/vars.sh
 source $INTEL_ONEAPI/ccl/latest/env/vars.sh
 USE_XCCL=ON USE_NCCL=OFF USE_NCCLX=OFF USE_TRANSPORT=OFF pip install --no-build-isolation -v .
 ```
+
+### MSCCL++ build
+
+Requires MSCCL++ v0.8.0+. See https://github.com/microsoft/mscclpp
+
+Supports both NVIDIA (CUDA) and AMD (ROCm) platforms. Currently implements
+allreduce and allgather_single via executor-based execution plans; all other
+collectives throw with guidance to use NCCL/RCCL instead.
+
+```bash
+# Build MSCCL++ from source (includes C++ lib + Python plan generation DSL)
+./build_mscclpp.sh              # CUDA (default)
+./build_mscclpp.sh --rocm       # ROCm
+./build_mscclpp.sh --clean      # Clean rebuild
+
+# Build torchcomms with MSCCL++
+export MSCCLPP_HOME=$PWD/third-party/mscclpp/install
+USE_MSCCLPP=ON pip install --no-build-isolation -v .
+
+# Set plan directory at runtime (required for collectives to work)
+export TORCHCOMM_MSCCLPP_PLAN_DIR=/path/to/execution-plans
+```
+
+Key env vars:
+- `MSCCLPP_HOME` — MSCCL++ install prefix (set by `build_mscclpp.sh`)
+- `TORCHCOMM_MSCCLPP_PLAN_DIR` — directory containing executor plan JSONs
+- `BUILDDIR` — override build directory (default: `third-party/mscclpp`)
+
+Execution plans encode GPU topology at generation time, so a plan for 4 GPUs
+cannot run on 8. The integration tests generate plans dynamically using the
+MSCCL++ language DSL (`mscclpp_plan_gen.py`).
 
 ### Install after backend build
 
@@ -199,7 +231,13 @@ ctest --test-dir build -R Options --output-on-failure
 ninja -C build TorchCommFactoryTest && ctest --test-dir build -R Factory --output-on-failure
 ```
 
-Available C++ test targets: `TorchCommFactoryTest`, `TorchCommOptionsTest`.
+Available C++ test targets: `TorchCommFactoryTest`, `TorchCommOptionsTest`,
+`MscclppEventPoolTest`, `MscclppPlanTest`, `MscclppCollectiveTest`.
+
+MSCCL++ C++ tests (require `USE_MSCCLPP=ON` and MSCCL++ installed):
+```bash
+ctest --test-dir build -R Mscclpp --output-on-failure
+```
 
 ### Python unit tests (pytest)
 
@@ -218,10 +256,14 @@ pytest comms/torchcomms/tests/unit/py/test_factory.py -k "test_name"
 
 ### Integration tests (require multiple GPUs)
 
-Tests are in `comms/torchcomms/tests/integration/py/`. Backend-specific integration tests live in their respective directories (e.g., `comms/torchcomms/ncclx/tests/`, `comms/torchcomms/distwrap/tests/`).
+Tests are in `comms/torchcomms/tests/integration/py/`. Backend-specific integration tests live in their respective directories (e.g., `comms/torchcomms/ncclx/tests/`, `comms/torchcomms/distwrap/tests/`, `comms/torchcomms/mscclpp/tests/`).
 
 ```bash
 torchrun --nproc_per_node=N comms/torchcomms/tests/integration/py/<test_file>.py
+
+# MSCCL++ integration tests (auto-detect GPU count, generate plans dynamically):
+torchrun --nproc_per_node=N comms/torchcomms/mscclpp/tests/integration/py/test_mscclpp_allreduce.py
+torchrun --nproc_per_node=N comms/torchcomms/mscclpp/tests/integration/py/test_mscclpp_multicomm.py
 ```
 
 ### Performance benchmarks
