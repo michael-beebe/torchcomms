@@ -11,15 +11,15 @@
 #   ./build_mscclpp.sh --tag v0.5.2       # Pin to a specific release
 #
 # After building:
-#   export MSCCLPP_HOME=$PWD/build/mscclpp/install
+#   export MSCCLPP_HOME=$PWD/third-party/mscclpp/install
 #   USE_MSCCLPP=ON pip install --no-build-isolation -v .
 
 set -euo pipefail
 
 # --- Defaults ---
 MSCCLPP_REPO="https://github.com/microsoft/mscclpp.git"
-MSCCLPP_TAG="${MSCCLPP_TAG:-v0.5.2}"  # Pin a release; override with --tag
-BUILDDIR="${BUILDDIR:-${PWD}/build/mscclpp}"
+MSCCLPP_TAG="${MSCCLPP_TAG:-v0.8.0}"  # Pin a release; override with --tag
+BUILDDIR="${BUILDDIR:-${PWD}/third-party/mscclpp}"
 INSTALL_PREFIX="${MSCCLPP_HOME:-${BUILDDIR}/install}"
 CLEAN_BUILD=0
 USE_ROCM=0
@@ -77,7 +77,7 @@ cd "${BUILD_OUT}"
 CMAKE_ARGS=(
   -DCMAKE_INSTALL_PREFIX="${INSTALL_PREFIX}"
   -DCMAKE_BUILD_TYPE=Release
-  -DBUILD_TESTS=OFF
+  -DMSCCLPP_BUILD_TESTS=OFF
   -DBUILD_PYTHON_BINDINGS=OFF
 )
 
