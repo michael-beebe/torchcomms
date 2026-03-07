@@ -274,7 +274,13 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::send(
     int /*dst*/,
     bool /*async_op*/,
     const SendOptions& /*options*/) {
-  throw std::runtime_error("[TorchCommMSCCLPP] send() not yet implemented.");
+  throw std::runtime_error(
+      "[TorchCommMSCCLPP] send() is not supported. "
+      "MSCCL++ does not provide point-to-point send (ncclSend is unavailable "
+      "in the MSCCL++ NCCL compat layer; ProxyChannel setup is required for "
+      "custom P2P). "
+      "Use a separate NCCL (NVIDIA) or RCCL (AMD) communicator for "
+      "point-to-point.");
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::recv(
@@ -282,7 +288,13 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::recv(
     int /*src*/,
     bool /*async_op*/,
     const RecvOptions& /*options*/) {
-  throw std::runtime_error("[TorchCommMSCCLPP] recv() not yet implemented.");
+  throw std::runtime_error(
+      "[TorchCommMSCCLPP] recv() is not supported. "
+      "MSCCL++ does not provide point-to-point recv (ncclRecv is unavailable "
+      "in the MSCCL++ NCCL compat layer; ProxyChannel setup is required for "
+      "custom P2P). "
+      "Use a separate NCCL (NVIDIA) or RCCL (AMD) communicator for "
+      "point-to-point.");
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::batch_op_issue(
@@ -290,7 +302,10 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::batch_op_issue(
     bool /*async_op*/,
     const BatchP2POptions& /*options*/) {
   throw std::runtime_error(
-      "[TorchCommMSCCLPP] batch_op_issue() not yet implemented.");
+      "[TorchCommMSCCLPP] batch_op_issue() is not supported (requires "
+      "send/recv which MSCCL++ does not provide). "
+      "Use a separate NCCL (NVIDIA) or RCCL (AMD) communicator for "
+      "batched point-to-point.");
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::broadcast(
@@ -299,7 +314,12 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::broadcast(
     bool /*async_op*/,
     const BroadcastOptions& /*options*/) {
   throw std::runtime_error(
-      "[TorchCommMSCCLPP] broadcast() not yet implemented.");
+      "[TorchCommMSCCLPP] broadcast() is not supported. "
+      "MSCCL++ does not provide a broadcast executor plan or built-in "
+      "algorithm (the NCCL compat layer logs 'No FallBack implementation "
+      "for broadcast'). "
+      "Use a separate NCCL (NVIDIA) or RCCL (AMD) communicator for "
+      "broadcast.");
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::all_reduce(
@@ -359,7 +379,10 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::all_gather(
     bool /*async_op*/,
     const AllGatherOptions& /*options*/) {
   throw std::runtime_error(
-      "[TorchCommMSCCLPP] all_gather() not yet implemented.");
+      "[TorchCommMSCCLPP] all_gather() (tensor-list variant) is not yet "
+      "implemented. Use all_gather_single() instead, which is supported. "
+      "Alternatively, use a separate NCCL (NVIDIA) or RCCL (AMD) "
+      "communicator.");
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::all_gather_v(
@@ -368,7 +391,9 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::all_gather_v(
     bool /*async_op*/,
     const AllGatherOptions& /*options*/) {
   throw std::runtime_error(
-      "[TorchCommMSCCLPP] all_gather_v() not yet implemented.");
+      "[TorchCommMSCCLPP] all_gather_v() is not supported. "
+      "MSCCL++ does not provide variable-length allgather. "
+      "Use a separate NCCL (NVIDIA) or RCCL (AMD) communicator.");
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::all_gather_single(
@@ -435,7 +460,12 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::reduce_scatter(
     bool /*async_op*/,
     const ReduceScatterOptions& /*options*/) {
   throw std::runtime_error(
-      "[TorchCommMSCCLPP] reduce_scatter() not yet implemented.");
+      "[TorchCommMSCCLPP] reduce_scatter() is not supported. "
+      "MSCCL++ does not ship reduce-scatter execution plans or built-in "
+      "algorithms (the NCCL compat layer logs 'No FallBack implementation "
+      "for ReduceScatter'). "
+      "Use a separate NCCL (NVIDIA) or RCCL (AMD) communicator for "
+      "reduce_scatter.");
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::reduce_scatter_v(
@@ -445,7 +475,9 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::reduce_scatter_v(
     bool /*async_op*/,
     const ReduceScatterOptions& /*options*/) {
   throw std::runtime_error(
-      "[TorchCommMSCCLPP] reduce_scatter_v() not yet implemented.");
+      "[TorchCommMSCCLPP] reduce_scatter_v() is not supported. "
+      "MSCCL++ does not provide variable-length reduce-scatter. "
+      "Use a separate NCCL (NVIDIA) or RCCL (AMD) communicator.");
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::reduce_scatter_single(
@@ -466,7 +498,9 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::all_to_all_single(
     bool /*async_op*/,
     const AllToAllSingleOptions& /*options*/) {
   throw std::runtime_error(
-      "[TorchCommMSCCLPP] all_to_all_single() not yet implemented.");
+      "[TorchCommMSCCLPP] all_to_all_single() is not supported. "
+      "MSCCL++ does not provide all-to-all algorithms or executor plans. "
+      "Use a separate NCCL (NVIDIA) or RCCL (AMD) communicator.");
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::all_to_all_v_single(
@@ -477,7 +511,9 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::all_to_all_v_single(
     bool /*async_op*/,
     const AllToAllvSingleOptions& /*options*/) {
   throw std::runtime_error(
-      "[TorchCommMSCCLPP] all_to_all_v_single() not yet implemented.");
+      "[TorchCommMSCCLPP] all_to_all_v_single() is not supported. "
+      "MSCCL++ does not provide variable-length all-to-all. "
+      "Use a separate NCCL (NVIDIA) or RCCL (AMD) communicator.");
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::all_to_all(
@@ -486,7 +522,9 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::all_to_all(
     bool /*async_op*/,
     const AllToAllOptions& /*options*/) {
   throw std::runtime_error(
-      "[TorchCommMSCCLPP] all_to_all() not yet implemented.");
+      "[TorchCommMSCCLPP] all_to_all() is not supported. "
+      "MSCCL++ does not provide all-to-all algorithms or executor plans. "
+      "Use a separate NCCL (NVIDIA) or RCCL (AMD) communicator.");
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::barrier(
@@ -504,7 +542,10 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::scatter(
     int /*root*/,
     bool /*async_op*/,
     const ScatterOptions& /*options*/) {
-  throw std::runtime_error("[TorchCommMSCCLPP] scatter() not yet implemented.");
+  throw std::runtime_error(
+      "[TorchCommMSCCLPP] scatter() is not supported. "
+      "MSCCL++ does not provide scatter algorithms or executor plans. "
+      "Use a separate NCCL (NVIDIA) or RCCL (AMD) communicator.");
 }
 
 c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::gather(
@@ -513,15 +554,22 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::gather(
     int /*root*/,
     bool /*async_op*/,
     const GatherOptions& /*options*/) {
-  throw std::runtime_error("[TorchCommMSCCLPP] gather() not yet implemented.");
+  throw std::runtime_error(
+      "[TorchCommMSCCLPP] gather() is not supported. "
+      "MSCCL++ does not provide gather algorithms or executor plans. "
+      "Use a separate NCCL (NVIDIA) or RCCL (AMD) communicator.");
 }
 
 std::shared_ptr<TorchCommBackend> TorchCommMSCCLPP::split(
     const std::vector<int>& /*ranks*/,
     const std::string& /*name*/,
     const CommOptions& /*options*/) {
-  // TODO: Create sub-communicator via mscclpp bootstrap split
-  throw std::runtime_error("[TorchCommMSCCLPP] split() not yet implemented.");
+  throw std::runtime_error(
+      "[TorchCommMSCCLPP] split() is not supported. "
+      "MSCCL++ does not provide a sub-communicator API. "
+      "This blocks TP+PP topologies that rely on split() for sub-groups. "
+      "Use a separate NCCL (NVIDIA) or RCCL (AMD) communicator that "
+      "supports split().");
 }
 
 // --- Factory registration ---

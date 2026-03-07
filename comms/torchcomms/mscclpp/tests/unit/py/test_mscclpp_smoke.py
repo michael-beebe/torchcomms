@@ -221,5 +221,111 @@ class TestMscclppAllGatherSingleValidation(unittest.TestCase):
         self.assertIn("allgather", str(ctx.exception).lower())
 
 
+@unittest.skipUnless(
+    torch.cuda.is_available() and torch.cuda.device_count() > 0,
+    "No CUDA device available",
+)
+class TestMscclppUnsupportedOps(unittest.TestCase):
+    """Verify unsupported ops throw RuntimeError with actionable guidance.
+
+    Each message must:
+    - Identify the backend ([TorchCommMSCCLPP])
+    - Provide actionable guidance (mention NCCL/RCCL or explain the limitation)
+
+    These tests run on a single GPU without a plan directory and do not require
+    real distributed communication.
+    """
+
+    def setUp(self) -> None:
+        self.comm = torchcomms.new_comm(
+            "mscclpp", torch.device("cuda:0"), name="unsupported_ops_test"
+        )
+        self.tensor = torch.ones(64, device="cuda:0")
+
+    def tearDown(self) -> None:
+        self.comm.finalize()
+
+    def _assert_throws_with_guidance(self, fn, *args, **kwargs) -> None:
+        """Verify RuntimeError with backend name and actionable guidance."""
+        with self.assertRaises(RuntimeError) as ctx:
+            fn(*args, **kwargs)
+        msg = str(ctx.exception)
+        self.assertIn("TorchCommMSCCLPP", msg)
+        self.assertTrue(
+            "NCCL" in msg or "RCCL" in msg or "sub-communicator" in msg,
+            f"Error message should contain guidance. Got: {msg}",
+        )
+
+    def test_send_throws(self) -> None:
+        self._assert_throws_with_guidance(self.comm.send, self.tensor, 0, False)
+
+    def test_recv_throws(self) -> None:
+        self._assert_throws_with_guidance(self.comm.recv, self.tensor, 0, False)
+
+    def test_broadcast_throws(self) -> None:
+        self._assert_throws_with_guidance(self.comm.broadcast, self.tensor, 0, False)
+
+    def test_reduce_throws(self) -> None:
+        self._assert_throws_with_guidance(
+            self.comm.reduce, self.tensor, 0, torchcomms.ReduceOp.SUM, False
+        )
+
+    def test_all_gather_throws(self) -> None:
+        out_list = [torch.empty(64, device="cuda:0")]
+        self._assert_throws_with_guidance(
+            self.comm.all_gather, out_list, self.tensor, False
+        )
+
+    def test_all_gather_v_throws(self) -> None:
+        out_list = [torch.empty(64, device="cuda:0")]
+        self._assert_throws_with_guidance(
+            self.comm.all_gather_v, out_list, self.tensor, False
+        )
+
+    def test_reduce_scatter_throws(self) -> None:
+        output = torch.empty(64, device="cuda:0")
+        inputs = [self.tensor]
+        self._assert_throws_with_guidance(
+            self.comm.reduce_scatter,
+            output,
+            inputs,
+            torchcomms.ReduceOp.SUM,
+            False,
+        )
+
+    def test_reduce_scatter_single_throws(self) -> None:
+        output = torch.empty(64, device="cuda:0")
+        self._assert_throws_with_guidance(
+            self.comm.reduce_scatter_single,
+            output,
+            self.tensor,
+            torchcomms.ReduceOp.SUM,
+            False,
+        )
+
+    def test_all_to_all_single_throws(self) -> None:
+        output = torch.empty(64, device="cuda:0")
+        self._assert_throws_with_guidance(
+            self.comm.all_to_all_single, output, self.tensor, False
+        )
+
+    def test_all_to_all_throws(self) -> None:
+        out_list = [torch.empty(64, device="cuda:0")]
+        in_list = [self.tensor]
+        self._assert_throws_with_guidance(
+            self.comm.all_to_all, out_list, in_list, False
+        )
+
+    def test_barrier_throws(self) -> None:
+        self._assert_throws_with_guidance(self.comm.barrier, False)
+
+    def test_scatter_throws(self) -> None:
+        output = torch.empty(64, device="cuda:0")
+        self._assert_throws_with_guidance(self.comm.scatter, output, [], 0, False)
+
+    def test_gather_throws(self) -> None:
+        self._assert_throws_with_guidance(self.comm.gather, [], self.tensor, 0, False)
+
+
 if __name__ == "__main__":
     unittest.main()

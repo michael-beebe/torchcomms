@@ -115,6 +115,253 @@ TEST(MscclppCheckInitializedTest, AllGatherSingleThrowsBeforeInit) {
       comm.all_gather_single(output, input, false, {}), std::runtime_error);
 }
 
+// ---------------------------------------------------------------------------
+// Unsupported ops — verify throws with actionable guidance.
+//
+// Each test verifies:
+//   1. The method throws std::runtime_error.
+//   2. The message identifies the backend ("[TorchCommMSCCLPP]").
+//   3. The message contains guidance (mentions "NCCL" or "RCCL" or
+//      "sub-communicator" so the user knows where to go).
+//
+// These ops throw unconditionally — no checkInitialized() guard needed,
+// no GPU or network required.
+// ---------------------------------------------------------------------------
+
+namespace {
+void assertMessageContainsGuidance(const std::runtime_error& e) {
+  std::string msg(e.what());
+  EXPECT_NE(msg.find("TorchCommMSCCLPP"), std::string::npos)
+      << "Message must identify the backend";
+  bool has_guidance = msg.find("NCCL") != std::string::npos ||
+      msg.find("RCCL") != std::string::npos ||
+      msg.find("sub-communicator") != std::string::npos;
+  EXPECT_TRUE(has_guidance)
+      << "Message must contain actionable guidance (NCCL/RCCL/sub-communicator). "
+         "Got: "
+      << msg;
+}
+} // namespace
+
+TEST(MscclppUnsupportedOpsTest, SendThrowsWithGuidance) {
+  TorchCommMSCCLPP comm;
+  auto t = at::ones({64});
+  try {
+    comm.send(t, 0, false, {});
+    FAIL() << "Expected std::runtime_error";
+  } catch (const std::runtime_error& e) {
+    assertMessageContainsGuidance(e);
+    EXPECT_NE(std::string(e.what()).find("send"), std::string::npos);
+  }
+}
+
+TEST(MscclppUnsupportedOpsTest, RecvThrowsWithGuidance) {
+  TorchCommMSCCLPP comm;
+  auto t = at::ones({64});
+  try {
+    comm.recv(t, 0, false, {});
+    FAIL() << "Expected std::runtime_error";
+  } catch (const std::runtime_error& e) {
+    assertMessageContainsGuidance(e);
+    EXPECT_NE(std::string(e.what()).find("recv"), std::string::npos);
+  }
+}
+
+TEST(MscclppUnsupportedOpsTest, BatchOpIssueThrowsWithGuidance) {
+  TorchCommMSCCLPP comm;
+  try {
+    comm.batch_op_issue({}, false, {});
+    FAIL() << "Expected std::runtime_error";
+  } catch (const std::runtime_error& e) {
+    assertMessageContainsGuidance(e);
+    EXPECT_NE(std::string(e.what()).find("batch_op_issue"), std::string::npos);
+  }
+}
+
+TEST(MscclppUnsupportedOpsTest, BroadcastThrowsWithGuidance) {
+  TorchCommMSCCLPP comm;
+  auto t = at::ones({64});
+  try {
+    comm.broadcast(t, 0, false, {});
+    FAIL() << "Expected std::runtime_error";
+  } catch (const std::runtime_error& e) {
+    assertMessageContainsGuidance(e);
+    EXPECT_NE(std::string(e.what()).find("broadcast"), std::string::npos);
+  }
+}
+
+TEST(MscclppUnsupportedOpsTest, ReduceThrowsWithGuidance) {
+  TorchCommMSCCLPP comm;
+  auto t = at::ones({64});
+  try {
+    comm.reduce(t, 0, ReduceOp(ReduceOp::RedOpType::SUM), false, {});
+    FAIL() << "Expected std::runtime_error";
+  } catch (const std::runtime_error& e) {
+    assertMessageContainsGuidance(e);
+    EXPECT_NE(std::string(e.what()).find("reduce"), std::string::npos);
+  }
+}
+
+TEST(MscclppUnsupportedOpsTest, AllGatherThrowsWithGuidance) {
+  TorchCommMSCCLPP comm;
+  auto t = at::ones({64});
+  std::vector<at::Tensor> list = {at::zeros({64})};
+  try {
+    comm.all_gather(list, t, false, {});
+    FAIL() << "Expected std::runtime_error";
+  } catch (const std::runtime_error& e) {
+    assertMessageContainsGuidance(e);
+    EXPECT_NE(std::string(e.what()).find("all_gather"), std::string::npos);
+  }
+}
+
+TEST(MscclppUnsupportedOpsTest, AllGatherVThrowsWithGuidance) {
+  TorchCommMSCCLPP comm;
+  auto t = at::ones({64});
+  std::vector<at::Tensor> list = {at::zeros({64})};
+  try {
+    comm.all_gather_v(list, t, false, {});
+    FAIL() << "Expected std::runtime_error";
+  } catch (const std::runtime_error& e) {
+    assertMessageContainsGuidance(e);
+  }
+}
+
+TEST(MscclppUnsupportedOpsTest, ReduceScatterThrowsWithGuidance) {
+  TorchCommMSCCLPP comm;
+  auto output = at::zeros({64});
+  std::vector<at::Tensor> inputs = {at::ones({64})};
+  try {
+    comm.reduce_scatter(
+        output, inputs, ReduceOp(ReduceOp::RedOpType::SUM), false, {});
+    FAIL() << "Expected std::runtime_error";
+  } catch (const std::runtime_error& e) {
+    assertMessageContainsGuidance(e);
+    EXPECT_NE(std::string(e.what()).find("reduce_scatter"), std::string::npos);
+  }
+}
+
+TEST(MscclppUnsupportedOpsTest, ReduceScatterVThrowsWithGuidance) {
+  TorchCommMSCCLPP comm;
+  auto output = at::zeros({64});
+  std::vector<at::Tensor> inputs = {at::ones({64})};
+  try {
+    comm.reduce_scatter_v(
+        output, inputs, ReduceOp(ReduceOp::RedOpType::SUM), false, {});
+    FAIL() << "Expected std::runtime_error";
+  } catch (const std::runtime_error& e) {
+    assertMessageContainsGuidance(e);
+  }
+}
+
+TEST(MscclppUnsupportedOpsTest, ReduceScatterSingleThrowsWithGuidance) {
+  TorchCommMSCCLPP comm;
+  auto output = at::zeros({64});
+  auto input = at::ones({256});
+  try {
+    comm.reduce_scatter_single(
+        output, input, ReduceOp(ReduceOp::RedOpType::SUM), false, {});
+    FAIL() << "Expected std::runtime_error";
+  } catch (const std::runtime_error& e) {
+    assertMessageContainsGuidance(e);
+    EXPECT_NE(
+        std::string(e.what()).find("reduce_scatter_single"), std::string::npos);
+  }
+}
+
+TEST(MscclppUnsupportedOpsTest, AllToAllSingleThrowsWithGuidance) {
+  TorchCommMSCCLPP comm;
+  auto output = at::zeros({64});
+  auto input = at::ones({64});
+  try {
+    comm.all_to_all_single(output, input, false, {});
+    FAIL() << "Expected std::runtime_error";
+  } catch (const std::runtime_error& e) {
+    assertMessageContainsGuidance(e);
+    EXPECT_NE(
+        std::string(e.what()).find("all_to_all_single"), std::string::npos);
+  }
+}
+
+TEST(MscclppUnsupportedOpsTest, AllToAllVSingleThrowsWithGuidance) {
+  TorchCommMSCCLPP comm;
+  auto output = at::zeros({64});
+  auto input = at::ones({64});
+  try {
+    comm.all_to_all_v_single(output, input, {}, {}, false, {});
+    FAIL() << "Expected std::runtime_error";
+  } catch (const std::runtime_error& e) {
+    assertMessageContainsGuidance(e);
+  }
+}
+
+TEST(MscclppUnsupportedOpsTest, AllToAllThrowsWithGuidance) {
+  TorchCommMSCCLPP comm;
+  std::vector<at::Tensor> out_list = {at::zeros({64})};
+  std::vector<at::Tensor> in_list = {at::ones({64})};
+  try {
+    comm.all_to_all(out_list, in_list, false, {});
+    FAIL() << "Expected std::runtime_error";
+  } catch (const std::runtime_error& e) {
+    assertMessageContainsGuidance(e);
+    EXPECT_NE(std::string(e.what()).find("all_to_all"), std::string::npos);
+  }
+}
+
+TEST(MscclppUnsupportedOpsTest, BarrierThrowsWithGuidance) {
+  TorchCommMSCCLPP comm;
+  try {
+    comm.barrier(false, {});
+    FAIL() << "Expected std::runtime_error";
+  } catch (const std::runtime_error& e) {
+    assertMessageContainsGuidance(e);
+    EXPECT_NE(std::string(e.what()).find("barrier"), std::string::npos);
+  }
+}
+
+TEST(MscclppUnsupportedOpsTest, ScatterThrowsWithGuidance) {
+  TorchCommMSCCLPP comm;
+  auto output = at::zeros({64});
+  std::vector<at::Tensor> inputs = {at::ones({64})};
+  try {
+    comm.scatter(output, inputs, 0, false, {});
+    FAIL() << "Expected std::runtime_error";
+  } catch (const std::runtime_error& e) {
+    assertMessageContainsGuidance(e);
+    EXPECT_NE(std::string(e.what()).find("scatter"), std::string::npos);
+  }
+}
+
+TEST(MscclppUnsupportedOpsTest, GatherThrowsWithGuidance) {
+  TorchCommMSCCLPP comm;
+  auto input = at::ones({64});
+  std::vector<at::Tensor> outputs = {at::zeros({64})};
+  try {
+    comm.gather(outputs, input, 0, false, {});
+    FAIL() << "Expected std::runtime_error";
+  } catch (const std::runtime_error& e) {
+    assertMessageContainsGuidance(e);
+    EXPECT_NE(std::string(e.what()).find("gather"), std::string::npos);
+  }
+}
+
+TEST(MscclppUnsupportedOpsTest, SplitThrowsWithGuidance) {
+  TorchCommMSCCLPP comm;
+  try {
+    comm.split({0, 1}, "sub", {});
+    FAIL() << "Expected std::runtime_error";
+  } catch (const std::runtime_error& e) {
+    std::string msg(e.what());
+    EXPECT_NE(msg.find("TorchCommMSCCLPP"), std::string::npos);
+    EXPECT_NE(msg.find("split"), std::string::npos);
+    // split() mentions sub-communicator instead of NCCL/RCCL directly
+    bool has_guidance = msg.find("sub-communicator") != std::string::npos ||
+        msg.find("NCCL") != std::string::npos ||
+        msg.find("RCCL") != std::string::npos;
+    EXPECT_TRUE(has_guidance) << "split() message must mention guidance";
+  }
+}
+
 #else // !HAS_MSCCLPP
 
 TEST(MscclppCollectiveTestStub, SkippedWithoutMscclpp) {
