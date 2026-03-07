@@ -4,45 +4,26 @@
 #
 # End-to-end all_reduce test using the MSCCL++ backend.
 #
-# Uses allreduce_4gpu.json bundled alongside this test (generated with
-# MSCCL++'s allreduce.py plan generator for 4 GPUs, memory channels only).
+# Generates execution plans at test time via the MSCCL++ language DSL so the
+# test works with any GPU count (no hardcoded 4-GPU plan dependency).
 #
 # Run with:
-#   torchrun --nproc_per_node=4 \
-#     comms/torchcomms/mscclpp/tests/integration/py/test_mscclpp_allreduce_4gpu.py
+#   torchrun --nproc_per_node=N \
+#     comms/torchcomms/mscclpp/tests/integration/py/test_mscclpp_allreduce.py
 #
 # Override the plan directory via TORCHCOMM_MSCCLPP_PLAN_DIR:
-#   TORCHCOMM_MSCCLPP_PLAN_DIR=/path/to/plans torchrun --nproc_per_node=4 \
-#     comms/torchcomms/mscclpp/tests/integration/py/test_mscclpp_allreduce_4gpu.py
+#   TORCHCOMM_MSCCLPP_PLAN_DIR=/path/to/plans torchrun --nproc_per_node=N \
+#     comms/torchcomms/mscclpp/tests/integration/py/test_mscclpp_allreduce.py
 
 import os
-import shutil
 import sys
-import tempfile
 
 import torch
 import torchcomms
 
-# ---------------------------------------------------------------------------
-# Plan setup
-# ---------------------------------------------------------------------------
-_TEST_DIR = os.path.dirname(os.path.abspath(__file__))
-_BUNDLED_PLAN = os.path.join(_TEST_DIR, "allreduce_4gpu.json")
-
-
-def setup_plan_dir() -> tempfile.TemporaryDirectory:
-    """
-    Copy the bundled 4-GPU allreduce plan as 'allreduce.json' in a temp dir
-    so selectPlan() picks it up by the bare collective name.
-    Returns the TemporaryDirectory object; caller must keep it alive.
-    """
-    if not os.path.exists(_BUNDLED_PLAN):
-        raise FileNotFoundError(
-            f"Bundled 4-GPU allreduce plan not found: {_BUNDLED_PLAN}"
-        )
-    tmp = tempfile.TemporaryDirectory(prefix="mscclpp_plans_")
-    shutil.copy(_BUNDLED_PLAN, os.path.join(tmp.name, "allreduce.json"))
-    return tmp
+# Plan generation helper lives alongside this test.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from mscclpp_plan_gen import generate_plans
 
 
 # ---------------------------------------------------------------------------
@@ -53,23 +34,13 @@ def main() -> None:
     world_size = int(os.environ["WORLD_SIZE"])
     local_rank = int(os.environ.get("LOCAL_RANK", rank))
 
-    if world_size != 4:
-        if rank == 0:
-            print(
-                f"[WARNING] This test is designed for exactly 4 ranks "
-                f"(got {world_size}). The 4-GPU plan may not match.",
-                flush=True,
-            )
-
     device = torch.device(f"cuda:{local_rank}")
     torch.cuda.set_device(device)
 
-    # Stage plans on rank 0 then let all ranks inherit via env var.
-    # Because each rank is an independent process under torchrun we must
-    # set up the plan dir before calling new_comm().
-    tmp_plan_dir: tempfile.TemporaryDirectory | None = None
+    # Generate plans for the actual world size (unless already provided).
+    tmp_plan_dir = None
     if "TORCHCOMM_MSCCLPP_PLAN_DIR" not in os.environ:
-        tmp_plan_dir = setup_plan_dir()
+        tmp_plan_dir = generate_plans(world_size)
         os.environ["TORCHCOMM_MSCCLPP_PLAN_DIR"] = tmp_plan_dir.name
 
     # ------------------------------------------------------------------
@@ -127,8 +98,6 @@ def main() -> None:
     if tmp_plan_dir is not None:
         tmp_plan_dir.cleanup()
 
-    # Barrier-style: wait for all ranks to print before the process group
-    # is torn down (torchrun's own sync handles this).
     if rank == 0:
         print("[rank 0] All done.", flush=True)
 
