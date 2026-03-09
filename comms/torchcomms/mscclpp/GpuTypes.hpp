@@ -24,6 +24,9 @@ using gpuEvent_t = hipEvent_t;
 using gpuError_t = hipError_t;
 inline constexpr gpuError_t gpuSuccess = hipSuccess;
 inline constexpr gpuError_t gpuErrorNotReady = hipErrorNotReady;
+inline constexpr unsigned int gpuStreamNonBlocking = hipStreamNonBlocking;
+inline constexpr unsigned int gpuEventDisableTiming = hipEventDisableTiming;
+inline constexpr auto gpuMemcpyDeviceToDevice = hipMemcpyDeviceToDevice;
 
 } // namespace torch::comms::mscclpp_detail
 
@@ -41,6 +44,9 @@ using gpuEvent_t = cudaEvent_t;
 using gpuError_t = cudaError_t;
 inline constexpr gpuError_t gpuSuccess = cudaSuccess;
 inline constexpr gpuError_t gpuErrorNotReady = cudaErrorNotReady;
+inline constexpr unsigned int gpuStreamNonBlocking = cudaStreamNonBlocking;
+inline constexpr unsigned int gpuEventDisableTiming = cudaEventDisableTiming;
+inline constexpr auto gpuMemcpyDeviceToDevice = cudaMemcpyDeviceToDevice;
 
 } // namespace torch::comms::mscclpp_detail
 

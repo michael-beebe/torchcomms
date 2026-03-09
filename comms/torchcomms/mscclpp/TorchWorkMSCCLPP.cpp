@@ -8,63 +8,60 @@
 
 namespace torch::comms {
 
+using namespace mscclpp_detail;
+
 // --- MscclppGpuEventPool ---
 
 MscclppGpuEventPool::MscclppGpuEventPool(
-    std::shared_ptr<CudaApi> cuda_api,
+    std::shared_ptr<GpuApi> gpu_api,
     size_t max_size)
-    : cuda_api_(std::move(cuda_api)), max_size_(max_size) {}
+    : gpu_api_(std::move(gpu_api)), max_size_(max_size) {}
 
 MscclppGpuEventPool::~MscclppGpuEventPool() {
-  // Acquire the lock so we don't destroy events while another thread holds one.
   std::lock_guard<std::mutex> lock(mutex_);
   for (auto event : available_) {
-    cuda_api_->eventDestroy(event);
+    gpu_api_->eventDestroy(event);
   }
   available_.clear();
 }
 
-cudaEvent_t MscclppGpuEventPool::acquire() {
+gpuEvent_t MscclppGpuEventPool::acquire() {
   std::lock_guard<std::mutex> lock(mutex_);
   if (!available_.empty()) {
-    cudaEvent_t event = available_.back();
+    gpuEvent_t event = available_.back();
     available_.pop_back();
     return event;
   }
-  // Pool is empty — allocate a new event.
-  // cudaEventDisableTiming: no timing hardware, ~2x cheaper than timed events.
-  // We only use events for stream synchronization, not elapsed-time queries.
-  cudaEvent_t event;
+  gpuEvent_t event;
   CUDA_CHECK(
-      cuda_api_,
-      cuda_api_->eventCreateWithFlags(&event, cudaEventDisableTiming),
-      "Failed to create CUDA event for MscclppGpuEventPool");
+      gpu_api_,
+      gpu_api_->eventCreateWithFlags(&event, gpuEventDisableTiming),
+      "Failed to create GPU event for MscclppGpuEventPool");
   return event;
 }
 
-void MscclppGpuEventPool::release(cudaEvent_t event) {
+void MscclppGpuEventPool::release(gpuEvent_t event) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (available_.size() < max_size_) {
     available_.push_back(event);
   } else {
-    // Pool is at capacity; destroy the event rather than grow unboundedly.
-    cuda_api_->eventDestroy(event);
+    gpu_api_->eventDestroy(event);
   }
 }
 
 // --- TorchWorkMSCCLPP ---
 
 TorchWorkMSCCLPP::TorchWorkMSCCLPP(
-    cudaStream_t op_stream,
+    gpuStream_t op_stream,
     int device_index,
     std::chrono::milliseconds timeout_ms,
     std::shared_ptr<MscclppGpuEventPool> event_pool,
-    std::shared_ptr<CudaApi> cuda_api)
+    std::shared_ptr<GpuApi> gpu_api)
     : op_stream_(op_stream),
       device_index_(device_index),
       timeout_ms_(timeout_ms),
       event_pool_(std::move(event_pool)),
-      cuda_api_(std::move(cuda_api)) {
+      gpu_api_(std::move(gpu_api)) {
   // Acquire two events from the pool: one to mark when the collective
   // starts executing on the GPU, one to mark when it finishes.
   // Pool events are reused across operations to avoid allocation overhead.
@@ -84,8 +81,8 @@ TorchWorkMSCCLPP::~TorchWorkMSCCLPP() {
 // the GPU has begun executing (and start the timeout clock from that point).
 void TorchWorkMSCCLPP::recordStart() {
   CUDA_CHECK(
-      cuda_api_,
-      cuda_api_->eventRecord(start_event_, op_stream_),
+      gpu_api_,
+      gpu_api_->eventRecord(start_event_, op_stream_),
       "Failed to record MSCCL++ start event");
 }
 
@@ -94,19 +91,12 @@ void TorchWorkMSCCLPP::recordStart() {
 // on this event, and checkStatus() uses it to detect completion.
 void TorchWorkMSCCLPP::recordEnd() {
   CUDA_CHECK(
-      cuda_api_,
-      cuda_api_->eventRecord(end_event_, op_stream_),
+      gpu_api_,
+      gpu_api_->eventRecord(end_event_, op_stream_),
       "Failed to record MSCCL++ end event");
 }
 
-// Polls CUDA events to advance the work status.
-// Mirrors TorchWorkNCCL::checkStatus() exactly:
-//   1. If start_completed_time_ not set, query start_event_.
-//      On cudaSuccess: store current time, mark INPROGRESS.
-//   2. Query end_event_.
-//      On cudaSuccess: mark COMPLETED.
-//      On cudaErrorNotReady: check elapsed vs timeout_ms_.
-//      On other error: mark ERROR.
+// Polls GPU events to advance the work status.
 TorchWork::WorkStatus TorchWorkMSCCLPP::checkStatus() {
   // Short-circuit if already terminal
   if (status() == WorkStatus::COMPLETED || status() == WorkStatus::ERROR ||
@@ -116,13 +106,13 @@ TorchWork::WorkStatus TorchWorkMSCCLPP::checkStatus() {
 
   // Step 1: query start event to establish when the GPU began executing
   if (!start_completed_time_.has_value()) {
-    cudaError_t start_status = cuda_api_->eventQuery(start_event_);
-    if (start_status == cudaSuccess) {
+    gpuError_t start_status = gpu_api_->eventQuery(start_event_);
+    if (start_status == gpuSuccess) {
       start_completed_time_ = std::chrono::steady_clock::now();
       setStatus(WorkStatus::INPROGRESS);
-    } else if (start_status != cudaErrorNotReady) {
-      LOG(ERROR) << "[TorchWorkMSCCLPP] CUDA error during start event query: "
-                 << cuda_api_->getErrorString(start_status);
+    } else if (start_status != gpuErrorNotReady) {
+      LOG(ERROR) << "[TorchWorkMSCCLPP] GPU error during start event query: "
+                 << gpu_api_->getErrorString(start_status);
       setStatus(WorkStatus::ERROR);
     }
   }
@@ -131,10 +121,10 @@ TorchWork::WorkStatus TorchWorkMSCCLPP::checkStatus() {
   }
 
   // Step 2: start event done — now query end event
-  cudaError_t end_status = cuda_api_->eventQuery(end_event_);
-  if (end_status == cudaSuccess) {
+  gpuError_t end_status = gpu_api_->eventQuery(end_event_);
+  if (end_status == gpuSuccess) {
     setStatus(WorkStatus::COMPLETED);
-  } else if (end_status == cudaErrorNotReady) {
+  } else if (end_status == gpuErrorNotReady) {
     // Still running — check timeout against start_completed_time_
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - start_completed_time_.value());
@@ -145,25 +135,20 @@ TorchWork::WorkStatus TorchWorkMSCCLPP::checkStatus() {
       setStatus(WorkStatus::TIMEDOUT);
     }
   } else {
-    LOG(ERROR) << "[TorchWorkMSCCLPP] CUDA error during end event query: "
-               << cuda_api_->getErrorString(end_status);
+    LOG(ERROR) << "[TorchWorkMSCCLPP] GPU error during end event query: "
+               << gpu_api_->getErrorString(end_status);
     setStatus(WorkStatus::ERROR);
   }
 
   return status();
 }
 
-// CPU-block until the collective GPU kernel has fully completed on this rank.
+// Wait until the collective completes by inserting a stream dependency.
 //
 // MSCCLPP memory-channel kernels poll peer GPU memory via NVLink.  As long
 // as any rank's kernel is still running, it must be able to access all peers'
-// NVLink-registered memory.  finalize() destroys the communicator and
-// unregisters that memory, so it is ONLY safe to call finalize() once every
-// rank has confirmed its own GPU kernel is done.
-//
-// cudaEventSynchronize() blocks the CPU thread until end_event_ fires, i.e.,
-// until the GPU has executed past recordEnd() on op_stream_.  After wait()
-// returns, this rank's collective kernel is guaranteed complete.
+// NVLink-registered memory.  finalize() handles CPU-blocking synchronization
+// and the bootstrap barrier to ensure safe teardown.
 void TorchWorkMSCCLPP::wait() {
   WorkStatus current = checkStatus();
   if (current == WorkStatus::COMPLETED || current == WorkStatus::ERROR ||
@@ -171,16 +156,14 @@ void TorchWorkMSCCLPP::wait() {
     return;
   }
 
-  // CPU-blocking wait: the calling thread sleeps until the GPU reaches
-  // end_event_, which is recorded after the executor call returns.
-  cudaError_t err = cudaEventSynchronize(end_event_);
-  if (err == cudaSuccess) {
-    setStatus(WorkStatus::COMPLETED);
-  } else {
-    LOG(ERROR) << "[TorchWorkMSCCLPP] cudaEventSynchronize failed: "
-               << cudaGetErrorString(err);
-    setStatus(WorkStatus::ERROR);
-  }
+  // GPU-side wait: make the caller's current stream wait on end_event_.
+  // This matches TorchWorkNCCL::wait() — no CPU blocking, just stream ordering.
+  gpuStream_t current_stream = gpu_api_->getCurrentCUDAStream(device_index_);
+  CUDA_CHECK(
+      gpu_api_,
+      gpu_api_->streamWaitEvent(current_stream, end_event_, 0),
+      "Failed to make stream wait for MSCCL++ end event");
+  setStatus(WorkStatus::COMPLETED);
 }
 
 } // namespace torch::comms

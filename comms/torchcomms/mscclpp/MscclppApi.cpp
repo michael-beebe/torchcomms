@@ -6,6 +6,8 @@
 
 namespace torch::comms {
 
+using namespace mscclpp_detail;
+
 mscclpp::UniqueId DefaultMscclppApi::createUniqueId() {
   std::lock_guard<std::mutex> lock(api_mutex_);
   return mscclpp::TcpBootstrap::createUniqueId();
@@ -53,7 +55,7 @@ void DefaultMscclppApi::executePlan(
     void* recvbuf,
     size_t bytes,
     mscclpp::DataType dataType,
-    cudaStream_t stream) {
+    gpuStream_t stream) {
   std::lock_guard<std::mutex> lock(api_mutex_);
   executor.execute(
       rank, sendbuf, recvbuf, bytes, bytes, dataType, plan, stream);
@@ -68,7 +70,7 @@ void DefaultMscclppApi::executePlan(
     size_t sendBytes,
     size_t recvBytes,
     mscclpp::DataType dataType,
-    cudaStream_t stream) {
+    gpuStream_t stream) {
   std::lock_guard<std::mutex> lock(api_mutex_);
   executor.execute(
       rank, sendbuf, recvbuf, sendBytes, recvBytes, dataType, plan, stream);

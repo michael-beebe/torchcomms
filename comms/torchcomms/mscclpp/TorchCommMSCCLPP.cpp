@@ -89,10 +89,12 @@ void TorchCommMSCCLPP::init(
     int least_priority = 0, greatest_priority = 0;
     gpu_api_->getStreamPriorityRange(&least_priority, &greatest_priority);
     gpu_api_->streamCreateWithPriority(
-        &internal_stream_, cudaStreamNonBlocking, greatest_priority);
+        &internal_stream_,
+        mscclpp_detail::gpuStreamNonBlocking,
+        greatest_priority);
   } else {
     gpu_api_->streamCreateWithPriority(
-        &internal_stream_, cudaStreamNonBlocking, 0);
+        &internal_stream_, mscclpp_detail::gpuStreamNonBlocking, 0);
   }
 
   // 6. Create Executor
@@ -423,12 +425,12 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::all_gather_single(
   work->recordStart();
 
   // Pre-stage this rank's input at the correct slot in the output buffer.
-  cudaMemcpyAsync(
+  gpu_api_->memcpyAsync(
       static_cast<char*>(output.data_ptr()) +
           static_cast<size_t>(rank_) * chunk_bytes,
       input_contig.data_ptr(),
       chunk_bytes,
-      cudaMemcpyDeviceToDevice,
+      mscclpp_detail::gpuMemcpyDeviceToDevice,
       stream);
 
   // Execute allgather: both sendbuf and recvbuf point to the full output

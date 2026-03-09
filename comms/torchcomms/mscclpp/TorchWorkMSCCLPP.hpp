@@ -9,10 +9,8 @@
 #include <optional>
 #include <vector>
 
-#include <cuda_runtime.h>
-
 #include <comms/torchcomms/TorchWork.hpp>
-#include <comms/torchcomms/device/cuda/CudaApi.hpp>
+#include <comms/torchcomms/mscclpp/GpuTypes.hpp>
 
 namespace torch::comms {
 
@@ -28,13 +26,13 @@ class TorchCommMSCCLPP;
  * class so it can be declared here and instantiated before TorchCommMSCCLPP
  * has its full initialization.
  *
- * Events are created with cudaEventDisableTiming (no timing overhead) since
+ * Events are created with gpuEventDisableTiming (no timing overhead) since
  * we only use them for stream synchronization.
  */
 class MscclppGpuEventPool {
  public:
   explicit MscclppGpuEventPool(
-      std::shared_ptr<CudaApi> cuda_api,
+      std::shared_ptr<mscclpp_detail::GpuApi> gpu_api,
       size_t max_size = 256);
   ~MscclppGpuEventPool();
 
@@ -45,16 +43,14 @@ class MscclppGpuEventPool {
   MscclppGpuEventPool& operator=(MscclppGpuEventPool&&) = delete;
 
   /// Acquire an event from the pool (or allocate a new one if empty).
-  cudaEvent_t acquire();
+  mscclpp_detail::gpuEvent_t acquire();
 
   /// Return an event to the pool. If the pool is full, destroys the event.
-  void release(cudaEvent_t event);
+  void release(mscclpp_detail::gpuEvent_t event);
 
  private:
-  // Shared ownership: keeps the GpuApi alive as long as the pool exists
-  // (prevents dangling pointer after TorchCommMSCCLPP is destroyed).
-  std::shared_ptr<CudaApi> cuda_api_;
-  std::vector<cudaEvent_t> available_;
+  std::shared_ptr<mscclpp_detail::GpuApi> gpu_api_;
+  std::vector<mscclpp_detail::gpuEvent_t> available_;
   std::mutex mutex_;
   size_t max_size_;
 };
@@ -76,11 +72,11 @@ class MscclppGpuEventPool {
 class TorchWorkMSCCLPP : public TorchWork {
  public:
   TorchWorkMSCCLPP(
-      cudaStream_t op_stream,
+      mscclpp_detail::gpuStream_t op_stream,
       int device_index,
       std::chrono::milliseconds timeout_ms,
       std::shared_ptr<MscclppGpuEventPool> event_pool,
-      std::shared_ptr<CudaApi> cuda_api);
+      std::shared_ptr<mscclpp_detail::GpuApi> gpu_api);
   ~TorchWorkMSCCLPP() override;
 
   // Non-copyable, non-movable
@@ -102,21 +98,16 @@ class TorchWorkMSCCLPP : public TorchWork {
   void recordEnd();
 
  private:
-  // Poll CUDA events and advance status. Returns current WorkStatus.
-  // Called internally by checkStatus() is private — callers use isCompleted()
-  // (inherited from TorchWork, reads atomic status_) or wait().
+  // Poll GPU events and advance status. Returns current WorkStatus.
   WorkStatus checkStatus();
 
-  cudaEvent_t start_event_;
-  cudaEvent_t end_event_;
-  cudaStream_t op_stream_; // not owned
+  mscclpp_detail::gpuEvent_t start_event_;
+  mscclpp_detail::gpuEvent_t end_event_;
+  mscclpp_detail::gpuStream_t op_stream_; // not owned
   int device_index_;
   std::chrono::milliseconds timeout_ms_;
-  // Shared ownership: keeps the GpuApi alive as long as the pool exists
-  // (prevents dangling pointer after TorchCommMSCCLPP is destroyed).
   std::shared_ptr<MscclppGpuEventPool> event_pool_;
-  // Shared ownership: keeps the api alive while work is using it for events.
-  std::shared_ptr<CudaApi> cuda_api_;
+  std::shared_ptr<mscclpp_detail::GpuApi> gpu_api_;
   std::optional<std::chrono::steady_clock::time_point> start_completed_time_;
 };
 
