@@ -20,7 +20,7 @@ class TorchCommMSCCLPP;
 /**
  * GPU event pool — reuses CUDA events to avoid alloc/free overhead.
  *
- * Thread-safe. Intended to be owned by TorchCommMSCCLPP (Commit 8) and
+ * Thread-safe. Intended to be owned by TorchCommMSCCLPP and
  * borrowed by TorchWorkMSCCLPP via reference. Follows the same pattern as
  * TorchCommNCCL's getEvent()/returnEvent() methods, but extracted into a
  * class so it can be declared here and instantiated before TorchCommMSCCLPP
