@@ -20,9 +20,9 @@ namespace torch::comms::mscclpp_utils {
 // Async ops use the dedicated internal stream so they return immediately;
 // synchronous ops use the caller's current torch CUDA stream so the
 // executor launch is inline with any preceding work on that stream.
-inline mscclpp_detail::gpuStream_t getOperationStream(
+inline mscclpp_gpu::gpuStream_t getOperationStream(
     bool async_op,
-    mscclpp_detail::gpuStream_t internal_stream,
+    mscclpp_gpu::gpuStream_t internal_stream,
     int device_index) {
   if (async_op) {
     return internal_stream;
@@ -66,7 +66,7 @@ void TorchCommMSCCLPP::init(
 #ifdef HAS_MSCCLPP
   // 1. GPU API (injectable; default to real CUDA/HIP calls)
   if (!gpu_api_) {
-    gpu_api_ = std::make_shared<mscclpp_detail::DefaultGpuApi>();
+    gpu_api_ = std::make_shared<mscclpp_gpu::DefaultGpuApi>();
   }
 
   // 2. MSCCL++ API (injectable for tests)
@@ -90,11 +90,11 @@ void TorchCommMSCCLPP::init(
     gpu_api_->getStreamPriorityRange(&least_priority, &greatest_priority);
     gpu_api_->streamCreateWithPriority(
         &internal_stream_,
-        mscclpp_detail::gpuStreamNonBlocking,
+        mscclpp_gpu::gpuStreamNonBlocking,
         greatest_priority);
   } else {
     gpu_api_->streamCreateWithPriority(
-        &internal_stream_, mscclpp_detail::gpuStreamNonBlocking, 0);
+        &internal_stream_, mscclpp_gpu::gpuStreamNonBlocking, 0);
   }
 
   // 6. Create Executor
@@ -430,7 +430,7 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::all_gather_single(
           static_cast<size_t>(rank_) * chunk_bytes,
       input_contig.data_ptr(),
       chunk_bytes,
-      mscclpp_detail::gpuMemcpyDeviceToDevice,
+      mscclpp_gpu::gpuMemcpyDeviceToDevice,
       stream);
 
   // Execute allgather: both sendbuf and recvbuf point to the full output

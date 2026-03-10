@@ -32,7 +32,7 @@ class TorchCommMSCCLPP;
 class MscclppGpuEventPool {
  public:
   explicit MscclppGpuEventPool(
-      std::shared_ptr<mscclpp_detail::GpuApi> gpu_api,
+      std::shared_ptr<mscclpp_gpu::GpuApi> gpu_api,
       size_t max_size = 256);
   ~MscclppGpuEventPool();
 
@@ -43,14 +43,14 @@ class MscclppGpuEventPool {
   MscclppGpuEventPool& operator=(MscclppGpuEventPool&&) = delete;
 
   /// Acquire an event from the pool (or allocate a new one if empty).
-  mscclpp_detail::gpuEvent_t acquire();
+  mscclpp_gpu::gpuEvent_t acquire();
 
   /// Return an event to the pool. If the pool is full, destroys the event.
-  void release(mscclpp_detail::gpuEvent_t event);
+  void release(mscclpp_gpu::gpuEvent_t event);
 
  private:
-  std::shared_ptr<mscclpp_detail::GpuApi> gpu_api_;
-  std::vector<mscclpp_detail::gpuEvent_t> available_;
+  std::shared_ptr<mscclpp_gpu::GpuApi> gpu_api_;
+  std::vector<mscclpp_gpu::gpuEvent_t> available_;
   std::mutex mutex_;
   size_t max_size_;
 };
@@ -72,11 +72,11 @@ class MscclppGpuEventPool {
 class TorchWorkMSCCLPP : public TorchWork {
  public:
   TorchWorkMSCCLPP(
-      mscclpp_detail::gpuStream_t op_stream,
+      mscclpp_gpu::gpuStream_t op_stream,
       int device_index,
       std::chrono::milliseconds timeout_ms,
       std::shared_ptr<MscclppGpuEventPool> event_pool,
-      std::shared_ptr<mscclpp_detail::GpuApi> gpu_api);
+      std::shared_ptr<mscclpp_gpu::GpuApi> gpu_api);
   ~TorchWorkMSCCLPP() override;
 
   // Non-copyable, non-movable
@@ -101,13 +101,13 @@ class TorchWorkMSCCLPP : public TorchWork {
   // Poll GPU events and advance status. Returns current WorkStatus.
   WorkStatus checkStatus();
 
-  mscclpp_detail::gpuEvent_t start_event_;
-  mscclpp_detail::gpuEvent_t end_event_;
-  mscclpp_detail::gpuStream_t op_stream_; // not owned
+  mscclpp_gpu::gpuEvent_t start_event_;
+  mscclpp_gpu::gpuEvent_t end_event_;
+  mscclpp_gpu::gpuStream_t op_stream_; // not owned
   int device_index_;
   std::chrono::milliseconds timeout_ms_;
   std::shared_ptr<MscclppGpuEventPool> event_pool_;
-  std::shared_ptr<mscclpp_detail::GpuApi> gpu_api_;
+  std::shared_ptr<mscclpp_gpu::GpuApi> gpu_api_;
   std::optional<std::chrono::steady_clock::time_point> start_completed_time_;
 };
 

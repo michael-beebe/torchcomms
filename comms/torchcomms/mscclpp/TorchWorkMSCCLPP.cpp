@@ -8,7 +8,7 @@
 
 namespace torch::comms {
 
-using namespace mscclpp_detail;
+using namespace mscclpp_gpu;
 
 // --- MscclppGpuEventPool ---
 

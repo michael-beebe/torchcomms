@@ -27,7 +27,7 @@ import torch.nn as nn
 import torchcomms
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mscclpp_plan_gen import generate_plans
+from mscclpp_plan_gen import generate_plans  # pyre-ignore[21]
 
 
 def _cc_backend() -> str:
@@ -130,31 +130,33 @@ def main() -> None:
         # those. In production, a CommRouter would handle this automatically.
         grad_works = []
         for name, param in model.named_parameters():
-            if param.grad is not None:
-                if param.grad.data.nbytes >= min_mscclpp_bytes:
+            grad = param.grad
+            if grad is not None:
+                grad_data = grad.data
+                if grad_data.nbytes >= min_mscclpp_bytes:
                     # Large tensor → MSCCL++ (high-performance path)
                     work = mscclpp_comm.all_reduce(
-                        param.grad.data,
+                        grad_data,
                         torchcomms.ReduceOp.SUM,
                         True,  # async_op
                     )
                     if rank == 0 and step == 0:
                         print(
                             f"    [MSCCL++] allreduce {name} "
-                            f"({param.grad.data.nbytes} bytes)",
+                            f"({grad_data.nbytes} bytes)",
                             flush=True,
                         )
                 else:
                     # Small tensor → NCCL fallback
                     work = nccl_comm.all_reduce(
-                        param.grad.data,
+                        grad_data,
                         torchcomms.ReduceOp.SUM,
                         True,  # async_op
                     )
                     if rank == 0 and step == 0:
                         print(
                             f"    [NCCL]    allreduce {name} "
-                            f"({param.grad.data.nbytes} bytes)",
+                            f"({grad_data.nbytes} bytes)",
                             flush=True,
                         )
                 grad_works.append(work)
@@ -165,14 +167,16 @@ def main() -> None:
 
         # Average gradients (allreduce computes sum, divide by world_size)
         for param in model.parameters():
-            if param.grad is not None:
-                param.grad.data /= world_size
+            grad = param.grad
+            if grad is not None:
+                grad.data /= world_size
 
         # --- SGD step ---
         with torch.no_grad():
             for param in model.parameters():
-                if param.grad is not None:
-                    param.data -= lr * param.grad.data
+                grad = param.grad
+                if grad is not None:
+                    param.data -= lr * grad.data
 
         # --- Verify all ranks have the same parameters ---
         # Broadcast rank 0's params and compare (using NCCL since MSCCL++
@@ -209,8 +213,7 @@ def main() -> None:
 
     if rank == 0:
         print(
-            f"\nTraining complete: {num_steps} steps, "
-            f"all ranks synchronized.  PASS",
+            f"\nTraining complete: {num_steps} steps, all ranks synchronized.  PASS",
             flush=True,
         )
 

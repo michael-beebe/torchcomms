@@ -15,7 +15,7 @@
 #include <comms/torchcomms/rccl/HipApi.hpp>
 #include <hip/hip_runtime.h>
 
-namespace torch::comms::mscclpp_detail {
+namespace torch::comms::mscclpp_gpu {
 
 using GpuApi = HipApi;
 using DefaultGpuApi = DefaultHipApi;
@@ -28,14 +28,14 @@ inline constexpr unsigned int gpuStreamNonBlocking = hipStreamNonBlocking;
 inline constexpr unsigned int gpuEventDisableTiming = hipEventDisableTiming;
 inline constexpr auto gpuMemcpyDeviceToDevice = hipMemcpyDeviceToDevice;
 
-} // namespace torch::comms::mscclpp_detail
+} // namespace torch::comms::mscclpp_gpu
 
 #else // CUDA
 
 #include <comms/torchcomms/device/cuda/CudaApi.hpp>
 #include <cuda_runtime.h>
 
-namespace torch::comms::mscclpp_detail {
+namespace torch::comms::mscclpp_gpu {
 
 using GpuApi = CudaApi;
 using DefaultGpuApi = DefaultCudaApi;
@@ -48,6 +48,6 @@ inline constexpr unsigned int gpuStreamNonBlocking = cudaStreamNonBlocking;
 inline constexpr unsigned int gpuEventDisableTiming = cudaEventDisableTiming;
 inline constexpr auto gpuMemcpyDeviceToDevice = cudaMemcpyDeviceToDevice;
 
-} // namespace torch::comms::mscclpp_detail
+} // namespace torch::comms::mscclpp_gpu
 
 #endif // USE_ROCM

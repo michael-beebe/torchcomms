@@ -6,7 +6,7 @@
 
 namespace torch::comms {
 
-using namespace mscclpp_detail;
+using namespace mscclpp_gpu;
 
 mscclpp::UniqueId DefaultMscclppApi::createUniqueId() {
   std::lock_guard<std::mutex> lock(api_mutex_);

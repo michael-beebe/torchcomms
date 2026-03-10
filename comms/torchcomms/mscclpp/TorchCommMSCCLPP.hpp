@@ -171,7 +171,7 @@ class TorchCommMSCCLPP : public TorchCommBackend,
 #ifdef HAS_MSCCLPP
   // GPU API (device/stream management) — injected for testing, defaults to
   // DefaultGpuApi in init().
-  std::shared_ptr<mscclpp_detail::GpuApi> gpu_api_;
+  std::shared_ptr<mscclpp_gpu::GpuApi> gpu_api_;
 
   // MSCCL++ API (communicator/executor) — injected for testing.
   std::shared_ptr<MscclppApi> mscclpp_api_;
@@ -180,7 +180,7 @@ class TorchCommMSCCLPP : public TorchCommBackend,
   std::unique_ptr<mscclpp::Executor> executor_;
 
   // Dedicated async stream for executor launches.
-  mscclpp_detail::gpuStream_t internal_stream_ = nullptr;
+  mscclpp_gpu::gpuStream_t internal_stream_ = nullptr;
 
   // GPU event pool shared across all work handles from this communicator.
   std::shared_ptr<MscclppGpuEventPool> event_pool_;

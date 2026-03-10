@@ -80,7 +80,7 @@ class MscclppApi {
       void* recvbuf,
       size_t bytes,
       mscclpp::DataType dataType,
-      mscclpp_detail::gpuStream_t stream) = 0;
+      mscclpp_gpu::gpuStream_t stream) = 0;
 
   /// Execute a pre-loaded plan with separate send and receive buffer sizes.
   ///
@@ -95,7 +95,7 @@ class MscclppApi {
       size_t sendBytes,
       size_t recvBytes,
       mscclpp::DataType dataType,
-      mscclpp_detail::gpuStream_t stream) = 0;
+      mscclpp_gpu::gpuStream_t stream) = 0;
 };
 
 /**
@@ -134,7 +134,7 @@ class DefaultMscclppApi : public MscclppApi {
       void* recvbuf,
       size_t bytes,
       mscclpp::DataType dataType,
-      mscclpp_detail::gpuStream_t stream) override;
+      mscclpp_gpu::gpuStream_t stream) override;
 
   void executePlan(
       mscclpp::Executor& executor,
@@ -145,7 +145,7 @@ class DefaultMscclppApi : public MscclppApi {
       size_t sendBytes,
       size_t recvBytes,
       mscclpp::DataType dataType,
-      mscclpp_detail::gpuStream_t stream) override;
+      mscclpp_gpu::gpuStream_t stream) override;
 
  private:
   std::mutex api_mutex_;
