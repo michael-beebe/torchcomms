@@ -254,33 +254,22 @@ TEST(MscclppUnsupportedOpsTest, ReduceScatterVThrowsWithGuidance) {
   }
 }
 
-TEST(MscclppUnsupportedOpsTest, ReduceScatterSingleThrowsWithGuidance) {
+TEST(MscclppCheckInitializedTest, ReduceScatterSingleThrowsBeforeInit) {
   TorchCommMSCCLPP comm;
   auto output = at::zeros({64});
   auto input = at::ones({256});
-  try {
-    comm.reduce_scatter_single(
-        output, input, ReduceOp(ReduceOp::RedOpType::SUM), false, {});
-    FAIL() << "Expected std::runtime_error";
-  } catch (const std::runtime_error& e) {
-    assertMessageContainsGuidance(e);
-    EXPECT_NE(
-        std::string(e.what()).find("reduce_scatter_single"), std::string::npos);
-  }
+  EXPECT_THROW(
+      comm.reduce_scatter_single(
+          output, input, ReduceOp(ReduceOp::RedOpType::SUM), false, {}),
+      std::runtime_error);
 }
 
-TEST(MscclppUnsupportedOpsTest, AllToAllSingleThrowsWithGuidance) {
+TEST(MscclppCheckInitializedTest, AllToAllSingleThrowsBeforeInit) {
   TorchCommMSCCLPP comm;
   auto output = at::zeros({64});
   auto input = at::ones({64});
-  try {
-    comm.all_to_all_single(output, input, false, {});
-    FAIL() << "Expected std::runtime_error";
-  } catch (const std::runtime_error& e) {
-    assertMessageContainsGuidance(e);
-    EXPECT_NE(
-        std::string(e.what()).find("all_to_all_single"), std::string::npos);
-  }
+  EXPECT_THROW(
+      comm.all_to_all_single(output, input, false, {}), std::runtime_error);
 }
 
 TEST(MscclppUnsupportedOpsTest, AllToAllVSingleThrowsWithGuidance) {

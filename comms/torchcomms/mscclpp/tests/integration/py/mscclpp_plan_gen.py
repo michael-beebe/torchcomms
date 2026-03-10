@@ -3,6 +3,8 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 #
 # Generate MSCCL++ execution plans for any GPU count at test time.
+
+# pyre-ignore-all-errors[21]
 #
 # MSCCL++ execution plans encode the exact GPU topology (rank-to-rank
 # communication patterns, channel counts, threadblock assignments), so a
@@ -96,9 +98,7 @@ def _generate_allreduce_json(num_gpus: int) -> str:
             for tb in range(num_tb):
                 for peer in range(num_gpus):
                     if gpu != peer:
-                        channels[(peer, gpu, tb)].signal(
-                            tb, data_sync=SyncType.before
-                        )
+                        channels[(peer, gpu, tb)].signal(tb, data_sync=SyncType.before)
 
         for gpu in range(num_gpus):
             for tb in range(num_tb):
@@ -171,9 +171,7 @@ def _generate_allgather_json(num_gpus: int) -> str:
         for src in range(num_gpus):
             for dst in range(num_gpus):
                 if src != dst:
-                    channels[(dst, src)].signal(
-                        tb=0, data_sync=SyncType.before
-                    )
+                    channels[(dst, src)].signal(tb=0, data_sync=SyncType.before)
         for src in range(num_gpus):
             for dst in range(num_gpus):
                 if src != dst:
@@ -185,12 +183,174 @@ def _generate_allgather_json(num_gpus: int) -> str:
         return buf.getvalue()
 
 
+def _generate_reducescatter_json(num_gpus: int) -> str:
+    """Generate a reduce-scatter execution plan JSON for num_gpus GPUs.
+
+    Uses the allreduce plan generator as a base since reduce-scatter is
+    structurally similar (reduce across all ranks, then each rank keeps
+    its own chunk). The CollectiveProgram handles the buffer layout
+    differences via the ReduceScatter collective class.
+    """
+    from mscclpp.language.channel import MemoryChannel, SyncType
+    from mscclpp.language.collectives import ReduceScatter
+    from mscclpp.language.general import JSON
+    from mscclpp.language.program import CollectiveProgram
+    from mscclpp.language.rank import Rank
+
+    num_tb = 8
+    collective = ReduceScatter(num_gpus, num_tb, True)
+    with CollectiveProgram(
+        "reducescatter",
+        collective,
+        num_gpus,
+        protocol="Simple",
+        instr_fusion=True,
+        num_threads_per_block=1024,
+        use_double_scratch_buffer=False,
+    ):
+        channels = {}
+        for gpu in range(num_gpus):
+            for tb in range(num_tb):
+                for peer in range(num_gpus):
+                    if peer != gpu:
+                        channels[(peer, gpu, tb)] = MemoryChannel(peer, gpu)
+
+        for gpu in range(num_gpus):
+            for tb in range(num_tb):
+                for peer in range(num_gpus):
+                    if gpu != peer:
+                        channels[(peer, gpu, tb)].signal(tb, relaxed=True)
+
+        for gpu in range(num_gpus):
+            for tb in range(num_tb):
+                for peer in range(num_gpus):
+                    if gpu != peer:
+                        channels[(peer, gpu, tb)].wait(
+                            tb, data_sync=SyncType.after, relaxed=True
+                        )
+
+        for gpu in range(num_gpus):
+            rank = Rank(gpu)
+            input_buffer = rank.get_input_buffer()
+            for tb in range(num_tb):
+                index = gpu * num_tb + tb
+                src_chunk = input_buffer[index : index + 1]
+                for peer in range(num_gpus):
+                    if gpu != peer:
+                        peer_rank = Rank(peer)
+                        peer_input_buffer = peer_rank.get_input_buffer()
+                        channels[(peer, gpu, tb)].reduce(
+                            src_chunk,
+                            [peer_input_buffer[index : index + 1]],
+                            tb,
+                        )
+
+        for gpu in range(num_gpus):
+            for tb in range(num_tb):
+                for peer in range(num_gpus):
+                    if gpu != peer:
+                        channels[(peer, gpu, tb)].signal(tb, data_sync=SyncType.before)
+
+        for gpu in range(num_gpus):
+            for tb in range(num_tb):
+                for peer in range(num_gpus):
+                    if gpu != peer:
+                        channels[(peer, gpu, tb)].wait(tb)
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            print(JSON())
+        return buf.getvalue()
+
+
+def _generate_alltoall_json(num_gpus: int) -> str:
+    """Generate an all-to-all execution plan JSON for num_gpus GPUs.
+
+    Each rank has num_gpus chunks in the input; chunk i goes to rank i.
+    Uses memory channels with per-peer threadblocks.
+    """
+    from mscclpp.language.channel import MemoryChannel, SyncType
+    from mscclpp.language.collectives import AllToAll
+    from mscclpp.language.general import JSON
+    from mscclpp.language.program import CollectiveProgram
+    from mscclpp.language.rank import Buffer, Rank
+
+    chunksperloop = 1
+    collective = AllToAll(num_gpus, chunksperloop, True)
+    with CollectiveProgram(
+        "alltoall",
+        collective,
+        num_gpus,
+        instances=2,
+        protocol="Simple",
+        num_threads_per_block=1024,
+        use_double_scratch_buffer=False,
+    ):
+        channels = {}
+        scratch_buffer = {}
+        for gpu in range(num_gpus):
+            scratch_buffer[gpu] = Buffer(gpu, num_gpus - 1)
+            for peer in range(num_gpus):
+                if gpu != peer:
+                    channels[(peer, gpu)] = MemoryChannel(peer, gpu)
+
+        # Initial sync
+        for src in range(num_gpus):
+            for dst in range(num_gpus):
+                if src != dst:
+                    tb = dst if dst < src else dst - 1
+                    channels[(dst, src)].signal(tb=tb, relaxed=True)
+            for dst in range(num_gpus):
+                if src != dst:
+                    tb = dst if dst < src else dst - 1
+                    channels[(dst, src)].wait(
+                        tb=tb, relaxed=True, data_sync=SyncType.after
+                    )
+
+        # Put data to remote ranks
+        for gpu in range(num_gpus):
+            rank = Rank(gpu)
+            input_buffer = rank.get_input_buffer()
+            for peer in range(num_gpus):
+                if peer != gpu:
+                    remote_index = gpu if gpu < peer else gpu - 1
+                    tb = peer if peer < gpu else peer - 1
+                    channels[(peer, gpu)].put(
+                        scratch_buffer[peer][remote_index : remote_index + 1],
+                        input_buffer[peer : peer + 1],
+                        tb=tb,
+                    )
+                    channels[(peer, gpu)].signal(tb=tb, data_sync=SyncType.before)
+
+        # Copy from scratch to output
+        for gpu in range(num_gpus):
+            rank = Rank(gpu)
+            input_buffer = rank.get_input_buffer()
+            for peer in range(num_gpus):
+                if peer != gpu:
+                    index = peer if peer < gpu else peer - 1
+                    tb = index
+                    channels[(peer, gpu)].wait(tb=tb, data_sync=SyncType.after)
+                    rank.copy(
+                        input_buffer[peer : peer + 1],
+                        scratch_buffer[gpu][index : index + 1],
+                        tb=tb,
+                    )
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            print(JSON())
+        return buf.getvalue()
+
+
 def generate_plans(world_size: int) -> tempfile.TemporaryDirectory:
     """Generate MSCCL++ execution plans for the given world size.
 
     Creates a temporary directory containing:
-      - allreduce.json  (for all_reduce)
-      - allgather.json  (for all_gather_single)
+      - allreduce.json       (for all_reduce)
+      - allgather.json       (for all_gather_single)
+      - reducescatter.json   (for reduce_scatter_single)
+      - alltoall.json        (for all_to_all_single)
 
     The caller must keep the returned TemporaryDirectory alive for the
     duration of the test and call .cleanup() when done.
@@ -211,6 +371,14 @@ def generate_plans(world_size: int) -> tempfile.TemporaryDirectory:
     allgather_json = _generate_allgather_json(world_size)
     with open(os.path.join(tmp.name, "allgather.json"), "w") as f:
         f.write(allgather_json)
+
+    reducescatter_json = _generate_reducescatter_json(world_size)
+    with open(os.path.join(tmp.name, "reducescatter.json"), "w") as f:
+        f.write(reducescatter_json)
+
+    alltoall_json = _generate_alltoall_json(world_size)
+    with open(os.path.join(tmp.name, "alltoall.json"), "w") as f:
+        f.write(alltoall_json)
 
     return tmp
 

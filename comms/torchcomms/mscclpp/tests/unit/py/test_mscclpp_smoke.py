@@ -293,21 +293,21 @@ class TestMscclppUnsupportedOps(unittest.TestCase):
             False,
         )
 
-    def test_reduce_scatter_single_throws(self) -> None:
+    def test_reduce_scatter_single_no_plans_raises(self) -> None:
+        """reduce_scatter_single() with no plans loaded raises and names the collective."""
         output = torch.empty(64, device="cuda:0")
-        self._assert_throws_with_guidance(
-            self.comm.reduce_scatter_single,
-            output,
-            self.tensor,
-            torchcomms.ReduceOp.SUM,
-            False,
-        )
+        with self.assertRaises(RuntimeError) as ctx:
+            self.comm.reduce_scatter_single(
+                output, self.tensor, torchcomms.ReduceOp.SUM, False
+            )
+        self.assertIn("reducescatter", str(ctx.exception).lower())
 
-    def test_all_to_all_single_throws(self) -> None:
+    def test_all_to_all_single_no_plans_raises(self) -> None:
+        """all_to_all_single() with no plans loaded raises and names the collective."""
         output = torch.empty(64, device="cuda:0")
-        self._assert_throws_with_guidance(
-            self.comm.all_to_all_single, output, self.tensor, False
-        )
+        with self.assertRaises(RuntimeError) as ctx:
+            self.comm.all_to_all_single(output, self.tensor, False)
+        self.assertIn("alltoall", str(ctx.exception).lower())
 
     def test_all_to_all_throws(self) -> None:
         out_list = [torch.empty(64, device="cuda:0")]
