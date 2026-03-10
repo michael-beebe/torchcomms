@@ -2,6 +2,9 @@
 
 #pragma once
 
+#include <sstream>
+#include <stdexcept>
+
 // Platform-neutral GPU type aliases for the MSCCL++ backend.
 //
 // Reuses the existing CudaApi / HipApi abstract classes (DI pattern)
@@ -49,5 +52,19 @@ inline constexpr unsigned int gpuEventDisableTiming = cudaEventDisableTiming;
 inline constexpr auto gpuMemcpyDeviceToDevice = cudaMemcpyDeviceToDevice;
 
 } // namespace torch::comms::mscclpp_gpu
+
+// Platform-neutral error-checking macro for GPU API calls.
+// Uses mscclpp_gpu::gpuError_t / gpuSuccess so it works on both CUDA and ROCm.
+// Matches the CUDA_CHECK / HIP_CHECK pattern from CudaApi.hpp / HipApi.hpp.
+#define GPU_CHECK(gpu_api, call, err_str)                                \
+  do {                                                                   \
+    torch::comms::mscclpp_gpu::gpuError_t status = call;                 \
+    if (status != torch::comms::mscclpp_gpu::gpuSuccess) {               \
+      std::stringstream ss;                                              \
+      ss << err_str << ": " << gpu_api->getErrorString(status) << " at " \
+         << __FILE__ << ":" << __LINE__;                                 \
+      throw std::runtime_error(ss.str());                                \
+    }                                                                    \
+  } while (0)
 
 #endif // USE_ROCM

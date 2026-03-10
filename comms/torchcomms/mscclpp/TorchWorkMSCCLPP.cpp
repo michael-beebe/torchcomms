@@ -33,7 +33,7 @@ gpuEvent_t MscclppGpuEventPool::acquire() {
     return event;
   }
   gpuEvent_t event;
-  CUDA_CHECK(
+  GPU_CHECK(
       gpu_api_,
       gpu_api_->eventCreateWithFlags(&event, gpuEventDisableTiming),
       "Failed to create GPU event for MscclppGpuEventPool");
@@ -80,7 +80,7 @@ TorchWorkMSCCLPP::~TorchWorkMSCCLPP() {
 // Stamps op_stream_ with a start marker so checkStatus() can detect when
 // the GPU has begun executing (and start the timeout clock from that point).
 void TorchWorkMSCCLPP::recordStart() {
-  CUDA_CHECK(
+  GPU_CHECK(
       gpu_api_,
       gpu_api_->eventRecord(start_event_, op_stream_),
       "Failed to record MSCCL++ start event");
@@ -90,7 +90,7 @@ void TorchWorkMSCCLPP::recordStart() {
 // Stamps op_stream_ with an end marker. wait() blocks the caller's stream
 // on this event, and checkStatus() uses it to detect completion.
 void TorchWorkMSCCLPP::recordEnd() {
-  CUDA_CHECK(
+  GPU_CHECK(
       gpu_api_,
       gpu_api_->eventRecord(end_event_, op_stream_),
       "Failed to record MSCCL++ end event");
@@ -159,7 +159,7 @@ void TorchWorkMSCCLPP::wait() {
   // GPU-side wait: make the caller's current stream wait on end_event_.
   // This matches TorchWorkNCCL::wait() — no CPU blocking, just stream ordering.
   gpuStream_t current_stream = gpu_api_->getCurrentCUDAStream(device_index_);
-  CUDA_CHECK(
+  GPU_CHECK(
       gpu_api_,
       gpu_api_->streamWaitEvent(current_stream, end_event_, 0),
       "Failed to make stream wait for MSCCL++ end event");
