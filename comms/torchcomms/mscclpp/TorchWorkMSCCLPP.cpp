@@ -111,8 +111,9 @@ TorchWork::WorkStatus TorchWorkMSCCLPP::checkStatus() {
       start_completed_time_ = std::chrono::steady_clock::now();
       setStatus(WorkStatus::INPROGRESS);
     } else if (start_status != gpuErrorNotReady) {
-      LOG(ERROR) << "[TorchWorkMSCCLPP] GPU error during start event query: "
-                 << gpu_api_->getErrorString(start_status);
+      LOG(ERROR) << "[TC] GPU error during start event query: "
+                 << gpu_api_->getErrorString(start_status) << " ("
+                 << start_status << ")";
       setStatus(WorkStatus::ERROR);
     }
   }
@@ -129,14 +130,14 @@ TorchWork::WorkStatus TorchWorkMSCCLPP::checkStatus() {
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - start_completed_time_.value());
     if (elapsed > timeout_ms_) {
-      LOG(ERROR) << "[TorchWorkMSCCLPP] Operation timed out after "
-                 << elapsed.count() << " ms (limit: " << timeout_ms_.count()
-                 << " ms)";
+      LOG(ERROR) << "[TC] Operation timed out after " << elapsed.count()
+                 << " ms (limit: " << timeout_ms_.count() << " ms)";
       setStatus(WorkStatus::TIMEDOUT);
     }
   } else {
-    LOG(ERROR) << "[TorchWorkMSCCLPP] GPU error during end event query: "
-               << gpu_api_->getErrorString(end_status);
+    LOG(ERROR) << "[TC] GPU error during end event query: "
+               << gpu_api_->getErrorString(end_status) << " ("
+               << end_status << ")";
     setStatus(WorkStatus::ERROR);
   }
 

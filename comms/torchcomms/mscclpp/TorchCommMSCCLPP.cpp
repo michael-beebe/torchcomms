@@ -1,12 +1,13 @@
 // Copyright (c) Meta Platforms, Inc. and affiliates.
 
-// Include glog before ATen so glog's LOG macro takes precedence over the
-// stub redefinition in c10/util/logging_is_not_google_glog.h.
-#include <glog/logging.h>
-
 #include <comms/torchcomms/TorchCommFactory.hpp>
 #include <comms/torchcomms/TorchWork.hpp>
 #include <comms/torchcomms/mscclpp/TorchCommMSCCLPP.hpp>
+
+// Include TorchCommLogging.hpp (which pulls in glog) AFTER all ATen/torch
+// headers so glog's LOG macro takes precedence over the c10 stub
+// (c10/util/logging_is_not_google_glog.h).
+#include <comms/torchcomms/TorchCommLogging.hpp>
 
 #ifdef HAS_MSCCLPP
 #include <ATen/cuda/CUDAContext.h>
@@ -39,7 +40,10 @@ TorchCommMSCCLPP::TorchCommMSCCLPP() = default;
 
 TorchCommMSCCLPP::~TorchCommMSCCLPP() {
   if (initialized_) {
-    LOG(WARNING) << "[TorchCommMSCCLPP] Destructor called without finalize()";
+    TC_LOG(WARNING, this)
+        << "TorchCommMSCCLPP was not finalized before destruction. "
+        << "This may indicate a resource leak. Please call finalize() "
+        << "explicitly.";
   }
 }
 
@@ -124,10 +128,9 @@ void TorchCommMSCCLPP::init(
 
   initialized_ = true;
 
-  LOG(INFO) << "[TorchCommMSCCLPP] Initialized: name=" << name_
-            << " rank=" << rank_ << "/" << size_ << " device=" << device_
+  TC_LOG(INFO, this) << "Initialized: device=" << device_
 #ifdef HAS_MSCCLPP
-            << " plans_loaded=" << plans_.size()
+                     << " plans_loaded=" << plans_.size()
 #endif
       ;
 }
@@ -180,7 +183,7 @@ void TorchCommMSCCLPP::finalize() {
 
   initialized_ = false;
 
-  LOG(INFO) << "[TorchCommMSCCLPP] Finalized: name=" << name_;
+  TC_LOG(INFO, this) << "Finalized.";
 }
 
 #ifdef HAS_MSCCLPP
@@ -188,7 +191,7 @@ void TorchCommMSCCLPP::finalize() {
 void TorchCommMSCCLPP::loadPlans(const std::string& plan_dir) {
   namespace fs = std::filesystem;
   if (!fs::exists(plan_dir)) {
-    LOG(WARNING) << "[TorchCommMSCCLPP] Plan directory not found: " << plan_dir;
+    TC_LOG(WARNING, this) << "Plan directory not found: " << plan_dir;
     return;
   }
   for (const auto& entry : fs::directory_iterator(plan_dir)) {
@@ -196,7 +199,7 @@ void TorchCommMSCCLPP::loadPlans(const std::string& plan_dir) {
       const std::string plan_name = entry.path().stem().string();
       plans_[plan_name] =
           mscclpp_api_->loadExecutionPlan(entry.path().string(), rank_);
-      LOG(INFO) << "[TorchCommMSCCLPP] Loaded plan: " << plan_name;
+      TC_LOG(INFO, this) << "Loaded plan: " << plan_name;
     }
   }
 }
