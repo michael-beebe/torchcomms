@@ -177,6 +177,12 @@ USE_MSCCLPP=ON pip install --no-build-isolation -v .
 export TORCHCOMM_MSCCLPP_PLAN_DIR=/path/to/execution-plans
 ```
 
+> **Note:** MSCCL++ requires pre-generated execution plan files (JSON) that
+> describe the communication algorithm for a specific GPU count. Plans must be
+> provided via `TORCHCOMM_MSCCLPP_PLAN_DIR`. Without them, collectives using an
+> MSCCL++ communicator will throw an error. A future MSCCL++ release is expected
+> to add built-in algorithm selection.
+
 See https://github.com/microsoft/mscclpp for more information.
 
 
