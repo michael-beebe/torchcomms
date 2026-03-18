@@ -266,8 +266,45 @@ const at::Device& TorchCommMSCCLPP::getDevice() const {
   return device_;
 }
 
-// --- Stub implementations: all throw ---
-// TODO: Replace each stub with real MSCCL++ executor calls.
+#ifdef HAS_MSCCLPP
+
+c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::executeCollective(
+    const std::string& collective,
+    void* sendbuf,
+    void* recvbuf,
+    size_t sendBytes,
+    size_t recvBytes,
+    at::ScalarType dtype,
+    bool async_op,
+    std::chrono::milliseconds timeout,
+    const std::unordered_map<std::string, std::string>& hints) {
+  const auto& plan = selectPlan(collective, sendBytes, hints);
+
+  auto stream = mscclpp_utils::getOperationStream(
+      async_op, internal_stream_, device_.index());
+
+  auto work = c10::make_intrusive<TorchWorkMSCCLPP>(
+      stream, device_.index(), timeout, event_pool_, gpu_api_);
+  work->recordStart();
+
+  mscclpp_api_->executePlan(
+      *executor_,
+      plan,
+      rank_,
+      sendbuf,
+      recvbuf,
+      sendBytes,
+      recvBytes,
+      torchDtypeToMscclpp(dtype),
+      stream);
+
+  work->recordEnd();
+  return work;
+}
+
+#endif // HAS_MSCCLPP
+
+// --- Collective implementations ---
 //   Each collective will: validateReduceOp (if applicable), select a plan,
 //   create TorchWorkMSCCLPP, execute via mscclpp::Executor, return work handle.
 
@@ -333,30 +370,18 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::all_reduce(
 
 #ifdef HAS_MSCCLPP
   mscclpp_utils::validateReduceOp(op, "all_reduce");
-
   tensor = mscclpp_utils::ensureContiguous(tensor);
 
-  const auto& plan = selectPlan("allreduce", tensor.nbytes(), options.hints);
-
-  auto stream = mscclpp_utils::getOperationStream(
-      async_op, internal_stream_, device_.index());
-
-  auto work = c10::make_intrusive<TorchWorkMSCCLPP>(
-      stream, device_.index(), options.timeout, event_pool_, gpu_api_);
-  work->recordStart();
-
-  mscclpp_api_->executePlan(
-      *executor_,
-      plan,
-      rank_,
+  return executeCollective(
+      "allreduce",
       tensor.data_ptr(),
-      tensor.data_ptr(), // in-place: send and recv buffers are the same
+      tensor.data_ptr(),
       tensor.nbytes(),
-      torchDtypeToMscclpp(tensor.scalar_type()),
-      stream);
-
-  work->recordEnd();
-  return work;
+      tensor.nbytes(),
+      tensor.scalar_type(),
+      async_op,
+      options.timeout,
+      options.hints);
 #else
   throw std::runtime_error(
       "[TorchCommMSCCLPP] all_reduce() requires MSCCL++ (built without HAS_MSCCLPP).");
@@ -409,22 +434,11 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::all_gather_single(
   auto input_contig = mscclpp_utils::ensureContiguous(input);
   output = mscclpp_utils::ensureContiguous(output);
 
-  // all_gather_single: each rank contributes input of size N; output is
-  // world_size * N.  MSCCLPP's in-place allgather plan expects this rank's
-  // data to already be staged at output[rank * N] before execution.
   const size_t chunk_bytes = static_cast<size_t>(input_contig.nbytes());
-  const size_t output_bytes = static_cast<size_t>(output.nbytes());
 
-  const auto& plan = selectPlan("allgather", chunk_bytes, options.hints);
-
+  // Pre-stage this rank's input at output[rank * N] before the plan runs.
   auto stream = mscclpp_utils::getOperationStream(
       async_op, internal_stream_, device_.index());
-
-  auto work = c10::make_intrusive<TorchWorkMSCCLPP>(
-      stream, device_.index(), options.timeout, event_pool_, gpu_api_);
-  work->recordStart();
-
-  // Pre-stage this rank's input at the correct slot in the output buffer.
   gpu_api_->memcpyAsync(
       static_cast<char*>(output.data_ptr()) +
           static_cast<size_t>(rank_) * chunk_bytes,
@@ -433,22 +447,16 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::all_gather_single(
       mscclpp_gpu::gpuMemcpyDeviceToDevice,
       stream);
 
-  // Execute allgather: both sendbuf and recvbuf point to the full output
-  // buffer; sendBytes is the per-rank chunk size, recvBytes is the full
-  // output size.
-  mscclpp_api_->executePlan(
-      *executor_,
-      plan,
-      rank_,
+  return executeCollective(
+      "allgather",
       output.data_ptr(),
       output.data_ptr(),
       chunk_bytes,
-      output_bytes,
-      torchDtypeToMscclpp(input_contig.scalar_type()),
-      stream);
-
-  work->recordEnd();
-  return work;
+      static_cast<size_t>(output.nbytes()),
+      input_contig.scalar_type(),
+      async_op,
+      options.timeout,
+      options.hints);
 #else
   throw std::runtime_error(
       "[TorchCommMSCCLPP] all_gather_single() requires MSCCL++ (built without HAS_MSCCLPP).");
@@ -490,38 +498,19 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::reduce_scatter_single(
 
 #ifdef HAS_MSCCLPP
   mscclpp_utils::validateReduceOp(op, "reduce_scatter_single");
-
   auto input_contig = mscclpp_utils::ensureContiguous(input);
   output = mscclpp_utils::ensureContiguous(output);
 
-  const size_t input_bytes = static_cast<size_t>(input_contig.nbytes());
-  const size_t output_bytes = static_cast<size_t>(output.nbytes());
-
-  const auto& plan =
-      selectPlan("reducescatter", input_bytes, options.hints);
-
-  auto stream = mscclpp_utils::getOperationStream(
-      async_op, internal_stream_, device_.index());
-
-  auto work = c10::make_intrusive<TorchWorkMSCCLPP>(
-      stream, device_.index(), options.timeout, event_pool_, gpu_api_);
-  work->recordStart();
-
-  // reduce_scatter_single: input is world_size * N, output is N.
-  // The plan reduces across all ranks and scatters the result.
-  mscclpp_api_->executePlan(
-      *executor_,
-      plan,
-      rank_,
+  return executeCollective(
+      "reducescatter",
       input_contig.data_ptr(),
       output.data_ptr(),
-      input_bytes,
-      output_bytes,
-      torchDtypeToMscclpp(input_contig.scalar_type()),
-      stream);
-
-  work->recordEnd();
-  return work;
+      static_cast<size_t>(input_contig.nbytes()),
+      static_cast<size_t>(output.nbytes()),
+      input_contig.scalar_type(),
+      async_op,
+      options.timeout,
+      options.hints);
 #else
   throw std::runtime_error(
       "[TorchCommMSCCLPP] reduce_scatter_single() requires MSCCL++ "
@@ -540,34 +529,16 @@ c10::intrusive_ptr<TorchWork> TorchCommMSCCLPP::all_to_all_single(
   auto input_contig = mscclpp_utils::ensureContiguous(input);
   output = mscclpp_utils::ensureContiguous(output);
 
-  const size_t input_bytes = static_cast<size_t>(input_contig.nbytes());
-  const size_t output_bytes = static_cast<size_t>(output.nbytes());
-
-  const auto& plan =
-      selectPlan("alltoall", input_bytes, options.hints);
-
-  auto stream = mscclpp_utils::getOperationStream(
-      async_op, internal_stream_, device_.index());
-
-  auto work = c10::make_intrusive<TorchWorkMSCCLPP>(
-      stream, device_.index(), options.timeout, event_pool_, gpu_api_);
-  work->recordStart();
-
-  // all_to_all_single: each rank contributes world_size chunks,
-  // each chunk goes to a different rank.
-  mscclpp_api_->executePlan(
-      *executor_,
-      plan,
-      rank_,
+  return executeCollective(
+      "alltoall",
       input_contig.data_ptr(),
       output.data_ptr(),
-      input_bytes,
-      output_bytes,
-      torchDtypeToMscclpp(input_contig.scalar_type()),
-      stream);
-
-  work->recordEnd();
-  return work;
+      static_cast<size_t>(input_contig.nbytes()),
+      static_cast<size_t>(output.nbytes()),
+      input_contig.scalar_type(),
+      async_op,
+      options.timeout,
+      options.hints);
 #else
   throw std::runtime_error(
       "[TorchCommMSCCLPP] all_to_all_single() requires MSCCL++ "

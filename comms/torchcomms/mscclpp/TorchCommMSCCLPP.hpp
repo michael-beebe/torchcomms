@@ -200,6 +200,21 @@ class TorchCommMSCCLPP : public TorchCommBackend,
       size_t message_bytes,
       const std::unordered_map<std::string, std::string>& hints) const;
 
+  // Common implementation for all executor-based collectives.
+  // Selects a plan, creates a work handle, launches the executor, and
+  // returns the work. Each public collective method validates inputs
+  // and calls this with the appropriate buffers/sizes.
+  c10::intrusive_ptr<TorchWork> executeCollective(
+      const std::string& collective,
+      void* sendbuf,
+      void* recvbuf,
+      size_t sendBytes,
+      size_t recvBytes,
+      at::ScalarType dtype,
+      bool async_op,
+      std::chrono::milliseconds timeout,
+      const std::unordered_map<std::string, std::string>& hints);
+
   // Grant test fixture access to private plan methods and state.
   friend class ::MscclppPlanTest;
 #endif // HAS_MSCCLPP

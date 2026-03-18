@@ -53,20 +53,6 @@ void DefaultMscclppApi::executePlan(
     int rank,
     void* sendbuf,
     void* recvbuf,
-    size_t bytes,
-    mscclpp::DataType dataType,
-    gpuStream_t stream) {
-  std::lock_guard<std::mutex> lock(api_mutex_);
-  executor.execute(
-      rank, sendbuf, recvbuf, bytes, bytes, dataType, plan, stream);
-}
-
-void DefaultMscclppApi::executePlan(
-    mscclpp::Executor& executor,
-    const mscclpp::ExecutionPlan& plan,
-    int rank,
-    void* sendbuf,
-    void* recvbuf,
     size_t sendBytes,
     size_t recvBytes,
     mscclpp::DataType dataType,

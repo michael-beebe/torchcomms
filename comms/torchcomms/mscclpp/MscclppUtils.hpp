@@ -35,6 +35,8 @@ inline void validateReduceOp(
   }
 }
 
+// TODO: validate other ops?
+
 /// Ensure a tensor is contiguous, returning a contiguous copy if needed.
 /// Most MSCCL++ collective paths require contiguous device memory.
 inline at::Tensor ensureContiguous(const at::Tensor& tensor) {
