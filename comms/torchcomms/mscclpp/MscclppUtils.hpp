@@ -35,7 +35,8 @@ inline void validateReduceOp(
   }
 }
 
-// TODO: validate other ops?
+// MSCCL++ v0.8.0 executor hardcodes add_vectors<T>() in all reduce
+// handlers — only SUM actually works. Other ops silently compute SUM.
 
 /// Ensure a tensor is contiguous, returning a contiguous copy if needed.
 /// Most MSCCL++ collective paths require contiguous device memory.
