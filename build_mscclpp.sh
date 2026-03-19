@@ -18,7 +18,7 @@ set -euo pipefail
 
 # --- Defaults ---
 MSCCLPP_REPO="https://github.com/microsoft/mscclpp.git"
-MSCCLPP_TAG="${MSCCLPP_TAG:-v0.8.0}"  # Pin a release; override with --tag
+MSCCLPP_TAG="v0.8.0"  # Backend requires v0.8.0; do not change without updating the backend
 BUILDDIR="${BUILDDIR:-${PWD}/third-party/mscclpp}"
 INSTALL_PREFIX="${MSCCLPP_HOME:-${BUILDDIR}/install}"
 CLEAN_BUILD=0
@@ -30,10 +30,9 @@ while [[ $# -gt 0 ]]; do
   case $1 in
     --rocm)       USE_ROCM=1;      shift ;;
     --clean)      CLEAN_BUILD=1;   shift ;;
-    --tag)        MSCCLPP_TAG="$2"; shift 2 ;;
     --jobs|-j)    JOBS="$2";        shift 2 ;;
     --help|-h)
-      echo "Usage: $0 [--rocm] [--clean] [--tag <git-tag>] [--jobs N]"
+      echo "Usage: $0 [--rocm] [--clean] [--jobs N]"
       exit 0
       ;;
     *)
