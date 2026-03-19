@@ -6,9 +6,9 @@
 
 #include <fmt/core.h>
 
-#include <comms/torchcomms/StoreManager.hpp>
-#include <comms/torchcomms/TorchCommLogging.hpp>
-#include <comms/torchcomms/TorchCommUtils.hpp>
+#include <comms/torchcomms/utils/StoreManager.hpp>
+#include <comms/torchcomms/utils/Logging.hpp>
+#include <comms/torchcomms/utils/Utils.hpp>
 
 namespace torch::comms {
 
@@ -38,10 +38,10 @@ mscclpp::UniqueId TorchCommMSCCLPPBootstrap::exchangeUniqueId(
     return api_->createUniqueId();
   }
 
-  // Multi-process without a caller-supplied store: fall back to StoreManager
-  // (same pattern as TorchCommNCCLBootstrap::exchangeUniqueIdTCPStore).
+  // Multi-process without a caller-supplied store: fall back to
+  // createPrefixStore (same pattern as TorchCommNCCLBootstrap).
   if (!store_) {
-    store_ = StoreManager::get().getStore("mscclpp", name, timeout_);
+    store_ = createPrefixStore("mscclpp", timeout_);
   }
 
   // Key format mirrors TorchCommNCCLBootstrap::getNCCLStoreKey().

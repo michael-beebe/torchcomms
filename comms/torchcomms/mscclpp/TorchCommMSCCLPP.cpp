@@ -7,7 +7,7 @@
 // Include TorchCommLogging.hpp (which pulls in glog) AFTER all ATen/torch
 // headers so glog's LOG macro takes precedence over the c10 stub
 // (c10/util/logging_is_not_google_glog.h).
-#include <comms/torchcomms/TorchCommLogging.hpp>
+#include <comms/torchcomms/utils/Logging.hpp>
 
 #ifdef HAS_MSCCLPP
 #include <ATen/cuda/CUDAContext.h>
